@@ -1,8 +1,7 @@
 """Adversarial SHP/SHX/DBF parsing cases for scripts/import_shp.py.
 
 Run: python3 -m unittest discover -s tests
-Cases marked @unittest.expectedFailure reproduce known defects (see the comment on each);
-remove the decorator once the defect is fixed.
+Cases with a "Regression" comment reproduced review defects that are now fixed.
 """
 import contextlib
 import io
@@ -146,11 +145,9 @@ class ShapeTest(Tmp):
         buildings, report = self.read(shp)
         self.assertEqual((report["records"], len(buildings)), (12, 9))
 
-    # DEFECT: without a .shx, record_offsets() scans to len(file) instead of the header's
-    # file-length field (bytes 24..27, 16-bit words), so zero padding at the end becomes
-    # phantom records; with 8 or 16 bytes of padding record_type_bbox() stops the run with
-    # "Truncated .shp: record at byte ... runs past the end".
-    @unittest.expectedFailure
+    # Regression: without a .shx, record_offsets() used to scan to len(file) instead of the
+    # header's file-length field (bytes 24..27, 16-bit words), so zero padding at the end
+    # became phantom records or stopped the run with "Truncated .shp".
     def test_trailing_padding_without_shx(self):
         shp, _ = T.build_fixture(self.dir)
         with open(shp, "ab") as f:
@@ -159,9 +156,8 @@ class ShapeTest(Tmp):
         buildings, report = self.read(shp)
         self.assertEqual((report["records"], len(buildings)), (12, 9))
 
-    # DEFECT: a .shp cut inside a record's bbox raises struct.error (the bound check in
-    # record_type_bbox is off + 12, but it reads 32 bytes from off + 12).
-    @unittest.expectedFailure
+    # Regression: a .shp cut inside a record's bbox used to raise struct.error (the bound
+    # check in record_type_bbox was off + 12, but it read 32 bytes from off + 12).
     def test_truncated_shp_is_a_clean_error(self):
         shp, _ = T.build_fixture(self.dir)
         data = shp.read_bytes()
@@ -169,9 +165,8 @@ class ShapeTest(Tmp):
         with self.assertRaises(SystemExit):
             self.read(shp)
 
-    # DEFECT: a zero-byte .shx (e.g. a failed unzip) raises ValueError from mmap before the
-    # "len(shx) < 100 -> scan the .shp" fallback is reached.
-    @unittest.expectedFailure
+    # Regression: a zero-byte .shx (e.g. a failed unzip) used to raise ValueError from mmap
+    # before the "len(shx) < 100 -> scan the .shp" fallback was reached.
     def test_empty_shx_falls_back_to_scan(self):
         shp, _ = T.build_fixture(self.dir)
         (self.dir / "fixture.shx").write_bytes(b"")
@@ -219,25 +214,22 @@ class DbfVariantTest(Tmp):
         shp.with_suffix(".cpg").write_text("EUC-KR")
         self.assertEqual(self.read(shp)[0][0]["attrs"]["name"], "똠방각하")
 
-    # DEFECT: .cpg "EUC-KR" is widened to cp949, but --encoding euc-kr is used verbatim, so
-    # UHC-only syllables (똠, 햏, 뷁, ...) come out as U+FFFD.
-    @unittest.expectedFailure
+    # Regression: .cpg "EUC-KR" was widened to cp949, but --encoding euc-kr was used verbatim,
+    # so UHC-only syllables (똠, 햏, 뷁, ...) came out as U+FFFD.
     def test_encoding_flag_euc_kr_is_widened_to_cp949(self):
         fields = [("A1", "C", 20, 0), ("A24", "C", 40, 0), ("A25", "C", 40, 0)]
         shp = self.small(fields, [["1", "똠방각하", "햏관"]])
         self.assertEqual(self.read(shp, encoding="euc-kr")[0][0]["attrs"]["name"], "똠방각하")
 
-    # DEFECT: an unknown --encoding value escapes as a LookupError traceback.
-    @unittest.expectedFailure
+    # Regression: an unknown --encoding value used to escape as a LookupError traceback.
     def test_unknown_encoding_flag_is_a_clean_error(self):
         shp = self.small(FIELDS, self.ROWS[:1])
         with self.assertRaises(SystemExit):
             self.read(shp, encoding="bogus")
 
-    # DEFECT: a .cpg that does not match the data (says UTF-8, bytes are cp949) is trusted
-    # without any check: every Korean value becomes U+FFFD, so A9 "공동주택" no longer
-    # excludes apartments from the campus and generic dong names like "101동" become names.
-    @unittest.expectedFailure
+    # Regression: a .cpg that does not match the data (says UTF-8, bytes are cp949) used to be
+    # trusted without any check: every Korean value became U+FFFD, so A9 "공동주택" no longer
+    # excluded apartments from the campus and generic dong names like "101동" became names.
     def test_mislabelled_cpg_is_detected_or_warned(self):
         shp, _ = T.build_fixture(self.dir)
         (self.dir / "fixture.cpg").write_text("UTF-8")
@@ -247,18 +239,15 @@ class DbfVariantTest(Tmp):
         ok = buildings[0]["attrs"]["use"] == "교육연구시설" or "warning" in err.getvalue()
         self.assertTrue(ok, (report["encoding"], buildings[0]["attrs"]["use"]))
 
-    # DEFECT: shapelib/Clipper store C widths > 255 as (len byte + 256 * decimals byte);
-    # dbf_header() uses only the len byte, so every later field is read at the wrong offset
-    # (only a stderr warning about the record length is printed).
-    @unittest.expectedFailure
+    # Regression: shapelib/Clipper store C widths > 255 as (len byte + 256 * decimals byte);
+    # dbf_header() used only the len byte, so every later field was read at the wrong offset.
     def test_character_field_wider_than_255(self):
         fields = [("A1", "C", 20, 0), ("A24", "C", 300, 0), ("A25", "C", 40, 0), ("A26", "N", 9, 0)]
         buildings, _ = self.read(self.small(fields, [["1", "계명대학교", "바우어관", "5"]], wide_c=True))
         self.assertEqual((buildings[0]["attrs"]["dong"], buildings[0]["attrs"]["floors"]), ("바우어관", "5"))
 
-    # DEFECT: A26 = "0.5" passes the "> 0" test but is written as building:levels "0"
+    # Regression: A26 = "0.5" passed the "> 0" test but was written as building:levels "0"
     # (int(round(0.5)) == 0); same for reg:underground.
-    @unittest.expectedFailure
     def test_fractional_floors_never_become_zero(self):
         tags = self.tags(self.small(FIELDS, [["1", "", "a", "b", "0.5", "0.4"]]))[0]
         self.assertNotEqual(tags.get("building:levels"), "0")

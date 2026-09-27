@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 import math
+import signal
 import struct
 import sys
 import tempfile
@@ -228,6 +229,24 @@ def run_main(*args):
     return out.getvalue() + err.getvalue()
 
 
+@contextlib.contextmanager
+def time_limit(seconds):
+    """Fail instead of hanging the suite (Unix only; a no-op elsewhere)."""
+    if not hasattr(signal, "SIGALRM"):
+        yield
+        return
+
+    def expired(*_):
+        raise AssertionError(f"still running after {seconds} s")
+    old = signal.signal(signal.SIGALRM, expired)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old)
+
+
 def metres(lat1, lon1, lat2, lon2):
     """Small distances between nearby lat/lon points, in metres."""
     k = math.pi * 6378137 / 180
@@ -328,6 +347,16 @@ class PrjTest(unittest.TestCase):
         tm, label = imp.crs_from_prj(PRJ_5186_ESRI.replace("127.0", "127.5"))
         self.assertTrue(label.startswith("TM lat0=38 lon0=127.5"))
 
+    def test_non_greenwich_prime_meridian_is_rejected(self):
+        # Regression: PRIMEM was ignored, so a Paris-based .prj was labelled EPSG:5186 and
+        # every longitude came out 2.337 degrees (~210 km) off.
+        for wkt in (PRJ_5186_ESRI.replace('PRIMEM["Greenwich",0.0]', 'PRIMEM["Paris",2.33722917]'),
+                    PRJ_5186_OGC.replace('PRIMEM["Greenwich",0,', 'PRIMEM["Paris",2.5969213,')):
+            with self.assertRaises(SystemExit) as cm:
+                imp.crs_from_prj(wkt)
+            self.assertIn("prime meridian 'Paris'", str(cm.exception))
+        self.assertEqual(imp.crs_from_prj(PRJ_5186_OGC)[1], "EPSG:5186")  # PRIMEM["Greenwich",0,...]
+
 
 class ShapefileTest(unittest.TestCase):
     def setUp(self):
@@ -365,6 +394,31 @@ class ShapefileTest(unittest.TestCase):
         self.assertEqual(groups, [(a, []), (b, [hole])])
         orphan = rect(200, 0, 10, 10, ccw=True)  # wrongly oriented outer: kept as an outer
         self.assertEqual(len(imp.group_rings([a, orphan])), 2)
+
+    def test_bad_record_length_without_shx_is_a_clean_error(self):
+        # Regression: a record header with content length 0 or negative made the .shx-less
+        # scan loop forever (the offset never advanced), growing the offsets list without bound.
+        shp, _ = build_fixture(self.dir)
+        (self.dir / "fixture.shx").unlink()
+        good = shp.read_bytes()
+        third = imp.record_offsets(imp.open_mmap(shp))[2]
+        for length in (0, -4, 10 ** 6):
+            with self.subTest(length=length):
+                shp.write_bytes(good[:third + 4] + struct.pack(">i", length) + good[third + 8:])
+                with time_limit(5), self.assertRaises(SystemExit):
+                    imp.record_offsets(imp.open_mmap(shp))
+
+    def test_header_file_length_bounds_both_scan_and_index(self):
+        # Regression: zero padding after the declared file length became phantom records.
+        shp, _ = build_fixture(self.dir)
+        shx = shp.with_suffix(".shx")
+        expected = imp.record_offsets(imp.open_mmap(shp), imp.open_mmap(shx))
+        with open(shp, "ab") as f:
+            f.write(b"\0" * 100)
+        with open(shx, "ab") as f:
+            f.write(b"\0" * 16)
+        self.assertEqual(imp.record_offsets(imp.open_mmap(shp), imp.open_mmap(shx)), expected)
+        self.assertEqual(imp.record_offsets(imp.open_mmap(shp)), expected)
 
     def test_bbox_prefilter_and_centroid_filter(self):
         shp, _ = build_fixture(self.dir)
@@ -439,6 +493,49 @@ class DbfTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             self.read(self.dir / "k.shp", overrides={"name": "NOPE"})
 
+    def test_mislabelled_cpg_falls_back_to_detection(self):
+        # Regression: a .cpg saying UTF-8 on cp949 data was trusted, garbling every Korean value,
+        # so the apartment (A9 공동주택, dong 101동) was counted as a named campus building.
+        shp, campus = build_fixture(self.dir)
+        (self.dir / "fixture.cpg").write_text("UTF-8")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            buildings, report, _ = self.read(shp)
+        self.assertEqual(report["encoding"], "cp949")
+        self.assertTrue(report["encodingSource"].startswith("detected; .cpg said utf-8"))
+        self.assertIn("the .cpg says utf-8", err.getvalue())
+        self.assertEqual(buildings[0]["attrs"]["use"], "교육연구시설")
+        self.assertIn("Campus buildings (7)", run_main(shp, "--out", campus, "--dry-run"))
+
+    def test_matching_cpg_is_kept_despite_a_truncated_value(self):
+        fields = [("A1", "C", 20, 0), ("A24", "C", 9, 0), ("A25", "C", 40, 0)]  # 9 bytes: 4.5 syllables
+        write_shapefile(self.dir / "c", 5, [[ll_rect(35.856, 128.484, 20, 20)]])
+        write_dbf(self.dir / "c.dbf", fields, [["1", "계명대학교", "바우어관"]])
+        (self.dir / "c.prj").write_text(PRJ_5186_ESRI)
+        (self.dir / "c.cpg").write_text("CP949")
+        b, report, _ = self.read(self.dir / "c.shp")
+        self.assertEqual((report["encoding"], b[0]["attrs"]["dong"]), ("cp949", "바우어관"))
+        self.assertTrue(report["encodingSource"].startswith(".cpg"))
+
+    def test_encoding_flag_is_normalised_and_validated(self):
+        shp, campus = build_fixture(self.dir)
+        with contextlib.redirect_stderr(io.StringIO()):
+            _, report, _ = self.read(shp, encoding="EUC-KR")
+        self.assertEqual((report["encoding"], report["encodingSource"]), ("cp949", "--encoding"))
+        with self.assertRaises(SystemExit) as cm:
+            run_main(shp, "--out", campus, "--dry-run", "--encoding", "bogus")
+        self.assertIn("Unknown --encoding 'bogus'", str(cm.exception))
+
+    def test_truncated_korean_id_column_is_detected(self):
+        # "건물통합식별번호" does not fit in a 10-byte DBF name; exporters cut it to "건물통합식".
+        fields = [("건물통합식", "C", 28, 0), ("건물명", "C", 60, 0), ("지상층수", "N", 5, 0)]
+        write_shapefile(self.dir / "k", 5, [[ll_rect(35.856, 128.484, 20, 20)]])
+        write_dbf(self.dir / "k.dbf", fields, [["11110000000077", "계명대학교", "4"]])
+        (self.dir / "k.prj").write_text(PRJ_5186_ESRI)
+        b, report, _ = self.read(self.dir / "k.shp")
+        self.assertEqual(report["mapping"]["id"], "건물통합식")
+        self.assertEqual(imp.make_building(b[0], None, [])[0]["tags"]["reg:id"], "11110000000077")
+
     def test_parse_number(self):
         cases = {"": None, " ": None, "-": None, "0": 0.0, " 12.500000000": 12.5, "1,234": 1234.0, "abc": None}
         for s, v in cases.items():
@@ -449,9 +546,10 @@ class DbfTest(unittest.TestCase):
 
 class NameTest(unittest.TestCase):
     def test_generic_dong(self):
-        for s in ("", "주동", "1동", "제1동", "제 2 동", "A동", "B", "가동", "101동", "2-1동", "부속동", "3호"):
+        for s in ("", "주동", "1동", "제1동", "제 2 동", "A동", "B", "가동", "101동", "2-1동", "부속동", "3호",
+                  "주건축물제1동", "부속건축물제2동", "주건축물", "관리동", "경비실", "B-1동", "１동", "Ａ동"):
             self.assertTrue(imp.is_generic_dong(s), s)
-        for s in ("쉐턱관", "동영관", "본관동", "공학1호관", "학생회관", "아담스채플관"):
+        for s in ("쉐턱관", "동영관", "본관동", "공학1호관", "학생회관", "아담스채플관", "본관", "별관", "신관"):
             self.assertFalse(imp.is_generic_dong(s), s)
 
     def test_registry_name(self):
@@ -561,12 +659,164 @@ class ImportTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             run_main(self.shp, "--out", self.campus, "--dry-run", "--date", "27/09/2026")
 
+    def test_existing_backup_is_never_overwritten(self):
+        # Regression: a different pure-OSM campus.json (e.g. a partial Overpass result)
+        # silently replaced a good campus.osm.json.
+        run_main(self.shp, "--out", self.campus, "--date", "2026-09-27")
+        backup = self.dir / "campus.osm.json"
+        fresh = fake_campus()
+        fresh["buildings"] = fresh["buildings"][:1]  # a much smaller OSM download
+        fresh_text = json.dumps(fresh, ensure_ascii=False)
+        self.campus.write_text(fresh_text, encoding="utf-8")
+        text = run_main(self.shp, "--out", self.campus, "--date", "2026-09-27")
+        rotated = sorted(self.dir.glob("campus.osm.*.json"))
+        self.assertEqual(len(rotated), 1, text)
+        self.assertEqual(rotated[0].read_text(encoding="utf-8"), self.original)
+        self.assertEqual(backup.read_text(encoding="utf-8"), fresh_text)
+        self.assertIn("Previous OSM backup kept as", text)
+        self.assertIn("has 1 OSM buildings, the previous backup had 5", text)
+        run_main(self.shp, "--out", self.campus, "--date", "2026-09-27")  # re-run: nothing rotates
+        self.assertEqual(len(list(self.dir.glob("campus.osm.*.json"))), 1)
+
     def test_missing_prj_needs_crs_flag(self):
         (self.dir / "fixture.prj").unlink()
         with self.assertRaises(SystemExit):
             run_main(self.shp, "--out", self.campus, "--dry-run")
         text = run_main(self.shp, "--out", self.campus, "--dry-run", "--crs", "5186")
         self.assertIn("CRS EPSG:5186", text)
+
+
+def row(a1, a9="교육연구시설", a24="계명대학교", a25="", a26="4", a16=""):
+    """DBF row in FIELDS order: A1, A3, A9, A13, A16, A24, A25, A26, A27."""
+    return [a1, "2729010100", a9, "", a16, a24, a25, a26, ""]
+
+
+def osm_twin(name, lat, lon, w=20, h=20, dy=0.0):
+    """SHP ring (projected, clockwise) of an OSM-like rectangle, optionally shifted north."""
+    x, y = xy(lat, lon)
+    return rect(x, y + dy, w, h)
+
+
+class MergeRulesTest(unittest.TestCase):
+    """Rules 1-4 on small synthetic imports (regressions from the merge review)."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_import(self, records, campus=None, fields=FIELDS):
+        write_shapefile(self.dir / "f", 5, [r for r, _ in records])
+        write_dbf(self.dir / "f.dbf", fields, [r for _, r in records])
+        (self.dir / "f.prj").write_text(PRJ_5186_ESRI)
+        out = self.dir / "campus.json"
+        out.write_text(json.dumps(campus or fake_campus(), ensure_ascii=False), encoding="utf-8")
+        self.text = run_main(self.dir / "f.shp", "--out", out, "--date", "2026-09-27")
+        data = json.loads(out.read_text(encoding="utf-8"))
+        return data, {b["id"]: b for b in data["buildings"]}
+
+    def test_campus_follows_osm_match_uni_hints_and_name_groups(self):
+        # Regression: A9 alone decided campus, so the chapel (종교시설) and a 근린생활시설 piece of
+        # 본관 dropped out of the list and labels, and the 본관 entry depended on record order.
+        _, by_id = self.run_import([
+            ([[xy(lat, lon) for lat, lon in SHUTTUCK_LL]], row("1", a9="종교시설")),       # matches campus 쉐턱관
+            ([ll_rect(35.8590, 128.4850, 35, 35, dx=-20)], row("2", a9="제1종근린생활시설")),  # 본관, first
+            ([ll_rect(35.8590, 128.4850, 35, 35, dx=20)], row("3")),                          # 본관, second
+            ([ll_rect(35.8530, 128.4820, 20, 20)], row("4", a9="종교시설", a25="채플")),      # university chapel
+            ([ll_rect(35.8545, 128.4885, 20, 30)], row("5", a9="공동주택(기숙사)", a25="명교생활관")),
+            ([ll_rect(35.8540, 128.4880, 20, 40)], row("6", a9="공동주택", a24="성서아파트", a25="101동")),
+            ([ll_rect(35.8535, 128.4870, 10, 10)], row("7", a9="제2종근린생활시설", a24="편의점빌딩")),
+        ])
+        flags = {k: (b["name"], b["campus"]) for k, b in by_id.items() if k.startswith("m")}
+        self.assertEqual(flags, {
+            "m1": ("쉐턱관", True), "m2": ("본관", True), "m3": ("본관", True), "m4": ("채플", True),
+            "m5": ("명교생활관", True), "m6": ("성서아파트", False), "m7": ("편의점빌딩", False)})
+        self.assertEqual(by_id["m5"]["tags"]["building"], "dormitory")
+
+    def test_name_groups_share_the_campus_flag(self):
+        # A registry piece with the same name as a campus building joins its campus flag.
+        _, by_id = self.run_import([
+            ([ll_rect(35.8530, 128.4820, 20, 20)], row("1", a25="의양관")),
+            ([ll_rect(35.8530, 128.4830, 20, 20)], row("2", a9="제1종근린생활시설", a24="", a25="의양관")),
+        ])
+        self.assertEqual([by_id["m1"]["campus"], by_id["m2"]["campus"]], [True, True])
+        self.assertEqual(by_id["m2"]["tags"]["building"], "commercial")
+        m2 = {"index": 1, "part": 0, "attrs": {"use": "제1종근린생활시설", "dong": "의양관"},
+              "outer": by_id["m2"]["outer"], "holes": []}
+        self.assertFalse(imp.make_building(m2, None, [OUTLINE])[0]["campus"])  # only via the group
+
+    def test_shared_registry_names_are_not_used_as_names(self):
+        # Regression: every unmatched building fell back to A24 "계명대학교" (or kept a generic
+        # "주건축물제1동"), so the front end merged unrelated buildings into one entry.
+        _, by_id = self.run_import([
+            ([ll_rect(35.8530, 128.4820, 20, 20)], row("1", a25="제1동")),
+            ([ll_rect(35.8600, 128.4890, 20, 20)], row("2")),
+            ([ll_rect(35.8545, 128.4885, 20, 20)], row("3", a25="주건축물제1동")),
+            ([ll_rect(35.8535, 128.4895, 20, 20)], row("4", a25="주건축물제1동")),
+            ([ll_rect(35.8520, 128.4800, 20, 20)], row("5", a9="공동주택", a24="성서아파트", a25="101동")),
+            ([ll_rect(35.8520, 128.4810, 20, 20)], row("6", a9="공동주택", a24="성서아파트", a25="102동")),
+            ([ll_rect(35.8625, 128.4780, 20, 20)], row("7", a9="업무시설", a24="대명빌딩", a25="1동")),
+            ([ll_rect(35.8610, 128.4900, 20, 20)], row("8", a25="본관")),  # real name, not generic
+        ])
+        names = {k: b["name"] for k, b in by_id.items() if k.startswith("m")}
+        self.assertEqual(names, {
+            "m1": "계명대학교 제1동", "m2": None, "m3": None, "m4": None,
+            "m5": "성서아파트 101동", "m6": "성서아파트 102동", "m7": "대명빌딩", "m8": "본관"})
+        self.assertIn("names: 0 via OSM match, 5 via registry, 3 unnamed", self.text)
+
+    def test_osm_levels_and_height_fill_register_gaps(self):
+        # Regression: an OSM match's building:levels/height were dropped when A26/A16 were blank,
+        # so a 20-floor apartment fell back to the front end's 3-floor default.
+        campus = fake_campus()
+        campus["buildings"][2]["tags"].update({"building:levels": "20", "height": "61.5"})  # w300
+        ring = [xy(lat, lon) for lat, lon in campus["buildings"][2]["outer"]]
+        ring = ring if imp.signed_area(ring) < 0 else ring[::-1]
+        _, by_id = self.run_import([
+            ([ring], row("1", a9="", a24="", a26="", a16="")),
+            ([[p for p in ring]], row("2", a9="", a24="", a26="7", a16="0")),
+        ], campus=campus)
+        t1, t2 = by_id["m1"]["tags"], by_id["m2"]["tags"]
+        self.assertEqual((t1["building:levels"], t1["levels:source"], t1["height"], t1["height:source"]),
+                         ("20", "osm", "61.5", "osm"))
+        self.assertEqual((t2["building:levels"], t2["height"], t2["height:source"]), ("7", "61.5", "osm"))
+        self.assertNotIn("levels:source", t2)
+        self.assertIn("floors (A26>0): 1/2", self.text)
+        self.assertIn("copied from the OSM match where the register has none: floors 1, height 2", self.text)
+
+    def test_reg_id_marks_every_register_building(self):
+        # Regression: without a detected id column no reg:id was written, and the front end
+        # (src/buildings.js floorsSource) then labelled register floors as OSM ones.
+        fields = [("건물명", "C", 60, 0), ("건물동명", "C", 60, 0), ("지상층수", "N", 5, 0)]
+        _, by_id = self.run_import([([ll_rect(35.8530, 128.4820, 20, 20)], ["계명대학교", "오산관", "4"])],
+                                   fields=fields)
+        self.assertEqual(by_id["m0"]["tags"]["reg:id"], "#0")
+        self.assertEqual(by_id["m0"]["tags"]["building:levels"], "4")
+
+    def test_bbox_edge_pairs_are_decided_once(self):
+        # Regression: OSM keep/remove and SHP add used separate centroid tests, so a pair
+        # straddling the bbox edge was duplicated (OSM kept + SHP added) or lost (both dropped).
+        south = imp.BBOX[0]
+        campus = fake_campus()
+        # centroids 3.3 m outside / inside the south edge; the SHP twins are 8 m further in / out
+        extra = [("w601", "바깥쪽", south - 0.00003, 128.4850), ("w602", "안쪽", south + 0.00003, 128.4860),
+                 ("w603", "혼자", south - 0.0003, 128.4870)]
+        for bid, name, lat, lon in extra:
+            campus["buildings"].append({"id": bid, "name": name, "tags": {"building": "yes"},
+                                        "outer": to_ll(osm_twin(name, lat, lon)), "holes": [],
+                                        "campus": False})
+        data, by_id = self.run_import([
+            ([osm_twin("바깥쪽", south - 0.00003, 128.4850, dy=8)], row("1", a24="바깥쪽", a9="업무시설")),
+            ([osm_twin("안쪽", south + 0.00003, 128.4860, dy=-8)], row("2", a24="안쪽", a9="업무시설")),
+            ([ll_rect(south - 0.00006, 128.4800, 20, 20)], row("3", a24="무관", a9="업무시설")),
+            ([ll_rect(35.8560, 128.4840, 20, 20)], row("4")),
+        ], campus=campus)
+        names = sorted((b["name"], b["id"]) for b in data["buildings"] if b["name"] in ("바깥쪽", "안쪽", "혼자", "무관"))
+        self.assertEqual(names, [("바깥쪽", "m1"), ("안쪽", "m2"), ("혼자", "w603")])
+        self.assertIn("bbox edge: 1 SHP buildings just outside added as twins of removed OSM buildings; "
+                      "OSM outside the bbox replaced: w601", self.text)
+        self.assertEqual(data["buildingSource"]["count"], 3)
 
 
 if __name__ == "__main__":
