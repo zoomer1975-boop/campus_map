@@ -1,61 +1,618 @@
 {
-  "_note": "층수(floors)는 추정값입니다. 실제 값을 알면 여기만 고치면 모델에 반영됩니다. detail: auto(직사각형이면 박공지붕) | flat | tower | chapel | library | dome | modern | hanok | amphi",
-  "defaults": {
-    "floorHeight": 3.8,
-    "campusFloors": 4,
-    "otherFloors": 3
+ "_note": "층수(floors)는 추정값입니다(공식 캠퍼스 안내도에서 보이는 층 수 기준). 건축물대장(SHP)을 가져오면 대장 값이 우선합니다. wall/wallHex/roof/roofHex/extras는 계명대 공식 성서캠퍼스 안내도를 참고해 정했고, 일러스트의 밝은 색을 실제 재료 톤으로 보정했습니다. roof: flat|gable|hip|mansard|dome|barrel, extras: white_cupola_spire|central_tower|clock|portico_columns|curved_colonnade|fly_tower|dome|spire_cross|arched_windows|glass_atrium|rooftop_structure|dormers|hanok_roof. 키는 표시 이름 또는 이름 없는 건물의 OSM id(w...)입니다.",
+ "defaults": {
+  "floorHeight": 3.8,
+  "campusFloors": 4,
+  "otherFloors": 3
+ },
+ "aliases": {
+  "게명아트센터": "계명아트센터",
+  "계명대학교 동산도서관": "동산도서관",
+  "정보전산원/EDWARD SYSTEM 사업팀(3F)": "정보전산원",
+  "음악공연 예술대학": "음악공연예술대학",
+  "계명대학교 동산병원": "동산병원",
+  "계명대학교 동산병원 백합원": "동산병원 백합원",
+  "계명대학교 동산병원 별관": "동산병원 별관",
+  "계명대학교 동산병원 어린이집": "동산병원 어린이집"
+ },
+ "categories": [
+  "상징·행정",
+  "도서관·박물관",
+  "강의·연구",
+  "예술·체육",
+  "학생·복지",
+  "의료",
+  "기타"
+ ],
+ "buildings": {
+  "본관": {
+   "floors": 3,
+   "category": "상징·행정",
+   "major": true,
+   "desc": "대학 본부 건물. 중앙 시계탑이 캠퍼스의 상징입니다.",
+   "wall": "brick",
+   "wallHex": "#704242",
+   "roofHex": "#415d76",
+   "extras": [
+    "white_cupola_spire",
+    "clock",
+    "portico_columns"
+   ],
+   "porticoAt": 0.42,
+   "roof": "hip",
+   "displayName": "행소관(본관)"
   },
-  "aliases": {
-    "게명아트센터": "계명아트센터",
-    "계명대학교 동산도서관": "동산도서관",
-    "정보전산원/EDWARD SYSTEM 사업팀(3F)": "정보전산원",
-    "음악공연 예술대학": "음악공연예술대학",
-    "계명대학교 동산병원": "동산병원",
-    "계명대학교 동산병원 백합원": "동산병원 백합원",
-    "계명대학교 동산병원 별관": "동산병원 별관",
-    "계명대학교 동산병원 어린이집": "동산병원 어린이집"
+  "아담스채플관": {
+   "floors": 2,
+   "category": "상징·행정",
+   "major": true,
+   "desc": "채플(예배당). 뾰족한 첨탑이 있는 고딕풍 벽돌 건물입니다.",
+   "wall": "brick",
+   "wallHex": "#77534a",
+   "roofHex": "#4e4758",
+   "extras": [
+    "central_tower",
+    "dome",
+    "arched_windows"
+   ],
+   "towerAt": 0.4,
+   "roof": "gable",
+   "displayName": "아담스채플"
   },
-  "categories": ["상징·행정", "도서관·박물관", "강의·연구", "예술·체육", "학생·복지", "의료", "기타"],
-  "buildings": {
-    "본관":            { "floors": 5, "category": "상징·행정", "detail": "tower",   "major": true, "desc": "대학 본부 건물. 중앙 시계탑이 캠퍼스의 상징입니다." },
-    "아담스채플관":     { "floors": 3, "category": "상징·행정", "detail": "chapel",  "major": true, "desc": "채플(예배당). 뾰족한 첨탑이 있는 고딕풍 벽돌 건물입니다." },
-    "동산도서관":       { "floors": 5, "category": "도서관·박물관", "detail": "library", "major": true, "desc": "중앙도서관. 정면 열주가 특징입니다." },
-    "행소박물관":       { "floors": 4, "category": "도서관·박물관", "detail": "dome",    "major": true, "desc": "대학 박물관." },
-    "계명아트센터":     { "floors": 5, "category": "예술·체육", "detail": "modern",  "major": true, "desc": "대형 공연장." },
-    "음악공연예술대학": { "floors": 4, "category": "예술·체육", "detail": "auto", "desc": "음악공연예술대학 건물." },
-    "체육대학":         { "floors": 3, "category": "예술·체육", "detail": "flat", "desc": "체육대학 건물." },
-    "노천강당":         { "floors": 1, "category": "예술·체육", "detail": "amphi", "major": true, "desc": "계단식 야외 강당." },
-    "한학촌":           { "floors": 1, "category": "기타", "detail": "hanok", "major": true, "desc": "한옥 양식의 전통 건물군." },
-    "쉐턱관":           { "floors": 5, "category": "강의·연구", "detail": "auto", "major": true },
-    "오산관":           { "floors": 4, "category": "강의·연구", "detail": "auto" },
-    "공학1호관":        { "floors": 6, "category": "강의·연구", "detail": "auto", "major": true, "desc": "공과대학 강의·연구동." },
-    "공학2호관":        { "floors": 5, "category": "강의·연구", "detail": "auto", "desc": "공과대학 강의·연구동." },
-    "공학3호관":        { "floors": 5, "category": "강의·연구", "detail": "auto", "desc": "공과대학 강의·연구동." },
-    "덕래관":           { "floors": 4, "category": "강의·연구", "detail": "auto" },
-    "의양관":           { "floors": 6, "category": "강의·연구", "detail": "auto", "major": true, "desc": "경영대학 건물 (OSM 영문명: College of Business Administration)." },
-    "봉경관":           { "floors": 6, "category": "강의·연구", "detail": "auto", "major": true, "desc": "사회과학대학 건물 (OSM 영문명: College of Social Sciences)." },
-    "구바우어관":       { "floors": 5, "category": "강의·연구", "detail": "auto" },
-    "신바우어관":       { "floors": 6, "category": "강의·연구", "detail": "auto" },
-    "스미스관":         { "floors": 4, "category": "강의·연구", "detail": "auto", "major": true },
-    "동영관":           { "floors": 6, "category": "강의·연구", "detail": "auto" },
-    "영암관":           { "floors": 7, "category": "강의·연구", "detail": "auto", "major": true },
-    "대학원":           { "floors": 5, "category": "강의·연구", "detail": "auto", "desc": "대학원 건물." },
-    "백은관":           { "floors": 5, "category": "강의·연구", "detail": "auto" },
-    "아람관":           { "floors": 5, "category": "강의·연구", "detail": "auto" },
-    "보산관":           { "floors": 5, "category": "강의·연구", "detail": "auto" },
-    "산학협력관":       { "floors": 5, "category": "강의·연구", "detail": "auto", "desc": "산학협력 시설." },
-    "첨단산업지원센터": { "floors": 5, "category": "강의·연구", "detail": "flat" },
-    "의과대학":         { "floors": 7, "category": "강의·연구", "detail": "flat", "desc": "의과대학 건물." },
-    "간호대학":         { "floors": 6, "category": "강의·연구", "detail": "flat", "desc": "간호대학 건물." },
-    "정보전산원":       { "floors": 3, "category": "상징·행정", "detail": "auto", "desc": "정보전산원." },
-    "제1학생회관":      { "floors": 3, "category": "학생·복지", "detail": "auto", "desc": "학생회관." },
-    "제3학생회관":      { "floors": 4, "category": "학생·복지", "detail": "auto", "desc": "학생회관." },
-    "복지관":           { "floors": 3, "category": "학생·복지", "detail": "auto", "desc": "학생 복지 시설." },
-    "공대식당":         { "floors": 2, "category": "학생·복지", "detail": "auto", "desc": "식당." },
-    "학군단":           { "floors": 2, "category": "기타", "detail": "auto", "desc": "학생군사교육단(ROTC)." },
-    "동산병원":         { "floors": 20, "category": "의료", "detail": "flat", "palette": "modern", "major": true, "desc": "계명대학교 동산병원 (OSM 층수 20층)." },
-    "동산병원 별관":    { "floors": 6, "category": "의료", "detail": "flat", "palette": "modern" },
-    "동산병원 백합원":  { "floors": 3, "category": "의료", "detail": "flat", "palette": "modern" },
-    "동산병원 어린이집": { "floors": 2, "category": "의료", "detail": "flat", "palette": "modern" }
+  "동산도서관": {
+   "floors": 8,
+   "category": "도서관·박물관",
+   "major": true,
+   "desc": "중앙도서관. 정면 열주가 특징입니다.",
+   "wall": "brick",
+   "wallHex": "#8f493c",
+   "roofHex": "#d5c8d0",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "roof": "flat"
+  },
+  "행소박물관": {
+   "floors": 2,
+   "category": "도서관·박물관",
+   "major": true,
+   "desc": "대학 박물관.",
+   "wall": "brick",
+   "wallHex": "#6a4844",
+   "roofHex": "#414157",
+   "extras": [
+    "arched_windows"
+   ],
+   "roof": "hip"
+  },
+  "계명아트센터": {
+   "floors": 5,
+   "category": "예술·체육",
+   "major": true,
+   "desc": "대형 공연장.",
+   "wall": "brick",
+   "wallHex": "#974f3e",
+   "roofHex": "#60748f",
+   "extras": [
+    "portico_columns",
+    "curved_colonnade",
+    "fly_tower"
+   ],
+   "porticoAt": 0.45,
+   "colonnadeAt": 0.85,
+   "colonnadeRadius": 11,
+   "colonnadeHeight": 9,
+   "roof": "hip"
+  },
+  "음악공연예술대학": {
+   "floors": 5,
+   "category": "예술·체육",
+   "desc": "음악공연예술대학 건물.",
+   "wall": "brick",
+   "wallHex": "#8d4f3e",
+   "roofHex": "#60728e",
+   "roof": "hip",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "체육대학": {
+   "floors": 3,
+   "category": "예술·체육",
+   "desc": "체육대학 건물.",
+   "wall": "brick",
+   "wallHex": "#764b41",
+   "roofHex": "#9b8fa4",
+   "roof": "hip",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "displayName": "체육대학·체육관"
+  },
+  "노천강당": {
+   "floors": 1,
+   "category": "예술·체육",
+   "detail": "amphi",
+   "major": true,
+   "desc": "계단식 야외 강당.",
+   "wall": "concrete",
+   "wallHex": "#c0b4b8",
+   "roofHex": "#b8b0b3",
+   "extras": []
+  },
+  "한학촌": {
+   "floors": 1,
+   "category": "기타",
+   "detail": "hanok",
+   "major": true,
+   "desc": "한옥 양식의 전통 건물군.",
+   "wall": "stucco",
+   "wallHex": "#cdbaa0",
+   "roofHex": "#49484c",
+   "roof": "hip",
+   "extras": [
+    "hanok_roof"
+   ],
+   "displayName": "계명한학촌"
+  },
+  "쉐턱관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "major": true,
+   "wall": "brick",
+   "wallHex": "#6c4640",
+   "roofHex": "#cfcdce",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure",
+    "arched_windows"
+   ],
+   "desc": "사회과학대학."
+  },
+  "오산관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#794c41",
+   "roofHex": "#cbc3c6",
+   "roof": "flat",
+   "extras": [
+    "dome",
+    "rooftop_structure"
+   ],
+   "desc": "공과대학."
+  },
+  "공학1호관": {
+   "floors": 4,
+   "category": "강의·연구",
+   "major": true,
+   "desc": "공과대학 강의·연구동.",
+   "wall": "brick",
+   "wallHex": "#6e4a46",
+   "roofHex": "#d5c8d0",
+   "roof": "flat",
+   "extras": [
+    "arched_windows"
+   ]
+  },
+  "공학2호관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "desc": "공과대학 강의·연구동.",
+   "wall": "brick",
+   "wallHex": "#704a43",
+   "roofHex": "#d6c7d4",
+   "roof": "flat",
+   "extras": []
+  },
+  "공학3호관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "desc": "공과대학 강의·연구동.",
+   "wall": "brick",
+   "wallHex": "#764c4d",
+   "roofHex": "#d6c7d4",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "덕래관": {
+   "floors": 4,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#6a4941",
+   "roofHex": "#d3cace",
+   "roof": "flat",
+   "extras": [
+    "arched_windows",
+    "rooftop_structure"
+   ],
+   "desc": "공과대학."
+  },
+  "의양관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "major": true,
+   "desc": "경영대학 건물 (OSM 영문명: College of Business Administration).",
+   "wall": "brick",
+   "wallHex": "#835b54",
+   "roofHex": "#905a50",
+   "roof": "hip",
+   "extras": [
+    "rooftop_structure",
+    "glass_atrium"
+   ]
+  },
+  "봉경관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "major": true,
+   "desc": "사회과학대학 건물 (OSM 영문명: College of Social Sciences).",
+   "wall": "brick",
+   "wallHex": "#8c5145",
+   "roofHex": "#bfc6c5",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "구바우어관": {
+   "floors": 4,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#6a4a44",
+   "roofHex": "#5e6e82",
+   "roof": "hip",
+   "extras": [],
+   "displayName": "바우어관"
+  },
+  "신바우어관": {
+   "floors": 4,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#75534b",
+   "roofHex": "#4b4e5c",
+   "roof": "hip",
+   "extras": [],
+   "displayName": "바우어신관"
+  },
+  "스미스관": {
+   "floors": 6,
+   "category": "강의·연구",
+   "major": true,
+   "wall": "brick",
+   "wallHex": "#6c4546",
+   "roofHex": "#d4c9d1",
+   "roof": "flat",
+   "extras": [
+    "glass_atrium",
+    "rooftop_structure"
+   ],
+   "desc": "Tabula Rasa College."
+  },
+  "동영관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#784e49",
+   "roofHex": "#c3c3c3",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "KAC."
+  },
+  "영암관": {
+   "floors": 6,
+   "category": "강의·연구",
+   "major": true,
+   "wall": "brick",
+   "wallHex": "#744d49",
+   "roofHex": "#8b9389",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "인문국제학대학·사범대학."
+  },
+  "대학원": {
+   "floors": 4,
+   "category": "강의·연구",
+   "desc": "대학원 건물.",
+   "wall": "brick",
+   "wallHex": "#60473b",
+   "roofHex": "#3d736b",
+   "extras": [
+    "curved_colonnade",
+    "arched_windows"
+   ],
+   "colonnadeAt": 0.4,
+   "colonnadeRadius": 7,
+   "colonnadeHeight": 8,
+   "colonnadeDome": true,
+   "roof": "hip",
+   "displayName": "동천관(대학원)"
+  },
+  "백은관": {
+   "floors": 6,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#7a4b45",
+   "roofHex": "#98a299",
+   "roof": "flat",
+   "extras": [
+    "arched_windows"
+   ],
+   "desc": "자연과학대학."
+  },
+  "아람관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#61433e",
+   "roofHex": "#807673",
+   "roof": "flat",
+   "extras": []
+  },
+  "보산관": {
+   "floors": 5,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#794b3d",
+   "roofHex": "#4b4d4e",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "약학대학."
+  },
+  "산학협력관": {
+   "floors": 4,
+   "category": "강의·연구",
+   "desc": "산학협력 시설.",
+   "wall": "brick",
+   "wallHex": "#8a4f40",
+   "roofHex": "#566074",
+   "roof": "hip",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "첨단산업지원센터": {
+   "floors": 4,
+   "category": "강의·연구",
+   "wall": "brick",
+   "wallHex": "#553638",
+   "roofHex": "#606a89",
+   "roof": "hip",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "의과대학": {
+   "floors": 7,
+   "category": "강의·연구",
+   "desc": "의과대학 건물.",
+   "wall": "brick",
+   "wallHex": "#7b4842",
+   "roofHex": "#c7c5cb",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "간호대학": {
+   "floors": 6,
+   "category": "강의·연구",
+   "desc": "간호대학 건물.",
+   "wall": "brick",
+   "wallHex": "#79463f",
+   "roofHex": "#cac8cd",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "displayName": "전갑규관(간호대학)"
+  },
+  "정보전산원": {
+   "floors": 2,
+   "category": "상징·행정",
+   "desc": "정보전산원.",
+   "wall": "brick",
+   "wallHex": "#63423f",
+   "roofHex": "#af5438",
+   "roof": "hip",
+   "extras": [],
+   "displayName": "전산교육원"
+  },
+  "제1학생회관": {
+   "floors": 3,
+   "category": "학생·복지",
+   "desc": "학생회관.",
+   "wall": "brick",
+   "wallHex": "#744c4a",
+   "roofHex": "#984f4f",
+   "roof": "hip",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "제3학생회관": {
+   "floors": 5,
+   "category": "학생·복지",
+   "desc": "학생회관.",
+   "wall": "brick",
+   "wallHex": "#4e3234",
+   "roofHex": "#484849",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "복지관": {
+   "floors": 3,
+   "category": "학생·복지",
+   "desc": "학생 복지 시설.",
+   "wall": "brick",
+   "wallHex": "#8e4e3f",
+   "roofHex": "#53617b",
+   "roof": "hip",
+   "extras": []
+  },
+  "공대식당": {
+   "floors": 2,
+   "category": "학생·복지",
+   "desc": "식당.",
+   "wall": "glass",
+   "wallHex": "#b6ada5",
+   "roofHex": "#cdcac8",
+   "roof": "flat",
+   "extras": []
+  },
+  "학군단": {
+   "floors": 2,
+   "category": "기타",
+   "desc": "학생군사교육단(ROTC).",
+   "wall": "stucco",
+   "wallHex": "#bbb0ae",
+   "roofHex": "#d1ccce",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "동산병원": {
+   "floors": 20,
+   "category": "의료",
+   "palette": "modern",
+   "major": true,
+   "desc": "계명대학교 동산병원 (OSM 층수 20층).",
+   "wall": "concrete",
+   "wallHex": "#a78262",
+   "roofHex": "#6c7866",
+   "roof": "flat",
+   "extras": [
+    "glass_atrium",
+    "rooftop_structure"
+   ]
+  },
+  "동산병원 별관": {
+   "floors": 6,
+   "category": "의료",
+   "palette": "modern",
+   "wall": "brick",
+   "wallHex": "#6b4843",
+   "roofHex": "#cfcad3",
+   "roof": "flat",
+   "extras": []
+  },
+  "동산병원 백합원": {
+   "floors": 3,
+   "category": "의료",
+   "palette": "modern",
+   "wall": "brick",
+   "wallHex": "#6f4c47",
+   "roofHex": "#c3c3c3",
+   "roof": "flat",
+   "extras": []
+  },
+  "동산병원 어린이집": {
+   "floors": 2,
+   "category": "의료",
+   "palette": "modern",
+   "wall": "brick",
+   "wallHex": "#6b4843",
+   "roofHex": "#cfcad3",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ]
+  },
+  "w498247673": {
+   "wall": "brick",
+   "wallHex": "#714a44",
+   "roofHex": "#adb6b7",
+   "roof": "flat",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "floors": 5
+  },
+  "w472483528": {
+   "wall": "brick",
+   "wallHex": "#764c4d",
+   "roofHex": "#d6c7d4",
+   "roof": "flat",
+   "extras": []
+  },
+  "w472483527": {
+   "wall": "brick",
+   "wallHex": "#764c4d",
+   "roofHex": "#d6c7d4",
+   "roof": "flat",
+   "extras": []
+  },
+  "w472483529": {
+   "wall": "concrete",
+   "wallHex": "#cbb1ab",
+   "roofHex": "#a2a2a0",
+   "roof": "gable",
+   "extras": [],
+   "floors": 3,
+   "name": "첨단건설재료실험센터",
+   "campus": true,
+   "category": "기타"
+  },
+  "w308904252": {
+   "wall": "brick",
+   "wallHex": "#714544",
+   "roofHex": "#cfcecf",
+   "roof": "flat",
+   "extras": [],
+   "floors": 2,
+   "name": "대운동장 스탠드",
+   "campus": true,
+   "category": "예술·체육"
+  },
+  "w1448326205": {
+   "wall": "concrete",
+   "wallHex": "#c9c9c9",
+   "roofHex": "#c3c3c3",
+   "roof": "flat",
+   "extras": [],
+   "floors": 1
+  },
+  "w1447192462": {
+   "wall": "concrete",
+   "wallHex": "#c9c9c9",
+   "roofHex": "#c3c3c3",
+   "roof": "flat",
+   "extras": [],
+   "floors": 1
+  },
+  "w1446785997": {
+   "wall": "concrete",
+   "wallHex": "#c9c9c9",
+   "roofHex": "#c3c3c3",
+   "roof": "flat",
+   "extras": [],
+   "floors": 1
+  },
+  "w332136995": {
+   "name": "명교생활관",
+   "campus": true,
+   "category": "학생·복지",
+   "floors": 8,
+   "major": true,
+   "wall": "brick",
+   "wallHex": "#7a503b",
+   "roof": "flat",
+   "roofHex": "#616766",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "기숙사. OSM에는 아파트로 등록되어 있어 캠퍼스 건물로 바꿔 표시합니다."
   }
+ }
 }

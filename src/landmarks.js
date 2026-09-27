@@ -41,6 +41,12 @@ function box(rec, parent, mat, sx, sy, sz, x, y, z) {
 // "Front" = the long side facing south-ish (local +x faces south when d.x < 0).
 const frontSide = (rec) => (-rec.obb.d.x >= 0 ? 1 : -1);
 
+// Local z of a point `f` (0..1) of the way along the building from its west end.
+function alongFromWest(rec, f) {
+  const L = rec.obb.length;
+  return rec.obb.d.x >= 0 ? -L / 2 + f * L : L / 2 - f * L;
+}
+
 // ---------- footprint → rectangles ----------
 
 // Split an (almost) orthogonal footprint into rectangles in the frame, so every wing of an
@@ -182,6 +188,14 @@ function clockFaces(rec, g, mats, s, y, x = 0, z = 0) {
   }
 }
 
+// Smooth painted-metal material in the building's roof color (domes over towers/rotundas).
+const paints = new Map();
+function roofPaint(rec) {
+  const hex = rec.style.roofHex ?? '#6b7383';
+  if (!paints.has(hex)) paints.set(hex, new THREE.MeshStandardMaterial({ color: hex, roughness: 0.45, metalness: 0.35 }));
+  return paints.get(hex);
+}
+
 function cross(rec, g, mats, x, y, z) {
   box(rec, g, mats.gold, 0.3, 3.2, 0.3, x, y, z);
   box(rec, g, mats.gold, 1.8, 0.3, 0.3, x, y + 2, z);
@@ -207,22 +221,33 @@ const extras = {
     ctx.top = cross(rec, g, mats, 0, baseTop + lh + spireH, 0);
   },
 
-  // Tall tower at the middle of the front facade with a spire (아담스채플).
+  // Tall tower on the front facade (아담스채플): position from meta.towerAt (0..1 from the west
+  // end, default middle); capped with a dome when the style also lists `dome`, else a spire.
   central_tower(rec, g, mats, ctx) {
     const { width: W } = rec.obb;
     const s = THREE.MathUtils.clamp(W * 0.42, 6, 10);
     const x = frontSide(rec) * (W / 2 - s / 2 + 1.5);
+    const z = alongFromWest(rec, rec.meta?.towerAt ?? 0.5);
     const th = rec.height + ctx.rise + 8;
-    box(rec, g, rec.set.plain, s, th, s, x, 0, 0);
-    box(rec, g, mats.stone, s + 0.8, 0.8, s + 0.8, x, th - 0.8, 0);
-    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
-      add(rec, g, new THREE.ConeGeometry(0.6, 3, 4), rec.set.slateCone, x + (dx * s) / 2, th + 1.5, (dz * s) / 2);
+    box(rec, g, rec.set.plain, s, th, s, x, 0, z);
+    box(rec, g, mats.stone, s + 0.8, 0.8, s + 0.8, x, th - 0.8, z);
+    if (rec.style.extras.includes('clock')) clockFaces(rec, g, mats, s, th - 4, x, z);
+    if (rec.style.extras.includes('dome')) {
+      const r = s * 0.48;
+      add(rec, g, new THREE.CylinderGeometry(r, r, 2, 24), mats.white, x, th + 1, z);
+      add(rec, g, new THREE.SphereGeometry(r, 28, 14, 0, Math.PI * 2, 0, Math.PI / 2), roofPaint(rec), x, th + 2, z);
+      add(rec, g, new THREE.ConeGeometry(0.35, 2.4, 8), mats.gold, x, th + 2 + r + 1.1, z);
+      ctx.top = th + 2 + r + 2.3;
+      ctx.towerDome = true;
+      return;
     }
-    if (rec.style.extras.includes('clock')) clockFaces(rec, g, mats, s, th - 4, x, 0);
+    for (const [dx, dz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      add(rec, g, new THREE.ConeGeometry(0.6, 3, 4), rec.set.slateCone, x + (dx * s) / 2, th + 1.5, z + (dz * s) / 2);
+    }
     const spireH = 14;
-    const spire = add(rec, g, new THREE.ConeGeometry(s * 0.62, spireH, 4), rec.set.slateCone, x, th + spireH / 2, 0);
+    const spire = add(rec, g, new THREE.ConeGeometry(s * 0.62, spireH, 4), rec.set.slateCone, x, th + spireH / 2, z);
     spire.rotation.y = Math.PI / 4;
-    ctx.top = rec.style.extras.includes('spire_cross') ? cross(rec, g, mats, x, th + spireH, 0) : th + spireH;
+    ctx.top = rec.style.extras.includes('spire_cross') ? cross(rec, g, mats, x, th + spireH, z) : th + spireH;
   },
 
   // White columns + pediment on the middle of the front facade.
@@ -234,51 +259,72 @@ const extras = {
     const depth = 4.5;
     const n = Math.max(4, Math.round(run / 4) + 1);
     const cx = side * (W / 2 + depth - 0.8);
-    box(rec, g, mats.stone, depth + 3, 0.5, run + 4, side * (W / 2 + (depth + 3) / 2), 0, 0);
-    box(rec, g, mats.stone, depth + 1.6, 0.5, run + 2, side * (W / 2 + (depth + 1.6) / 2), 0.5, 0);
+    const z0 = alongFromWest(rec, rec.meta?.porticoAt ?? 0.5);
+    box(rec, g, mats.stone, depth + 3, 0.5, run + 4, side * (W / 2 + (depth + 3) / 2), 0, z0);
+    box(rec, g, mats.stone, depth + 1.6, 0.5, run + 2, side * (W / 2 + (depth + 1.6) / 2), 0.5, z0);
     const colGeom = new THREE.CylinderGeometry(0.5, 0.58, colH, 14);
-    for (let i = 0; i < n; i++) add(rec, g, colGeom, mats.white, cx, 1 + colH / 2, -run / 2 + (run * i) / (n - 1));
-    box(rec, g, mats.white, depth + 0.4, 1.3, run + 1.2, side * (W / 2 + depth / 2), 1 + colH, 0);
+    for (let i = 0; i < n; i++) add(rec, g, colGeom, mats.white, cx, 1 + colH / 2, z0 - run / 2 + (run * i) / (n - 1));
+    box(rec, g, mats.white, depth + 0.4, 1.3, run + 1.2, side * (W / 2 + depth / 2), 1 + colH, z0);
     const ped = new THREE.Shape([new THREE.Vector2(-(run + 1.2) / 2, 0), new THREE.Vector2((run + 1.2) / 2, 0), new THREE.Vector2(0, run * 0.14)]);
     const pg = new THREE.ExtrudeGeometry(ped, { depth: depth + 0.4, bevelEnabled: false });
     pg.translate(0, 0, -(depth + 0.4) / 2);
     pg.rotateY(Math.PI / 2);
-    add(rec, g, pg, [mats.white, rec.set.slate], side * (W / 2 + depth / 2), 2.3 + colH, 0);
+    add(rec, g, pg, [mats.white, rec.set.slate], side * (W / 2 + depth / 2), 2.3 + colH, z0);
     ctx.top = Math.max(ctx.top, 2.3 + colH + run * 0.14);
   },
 
-  // Semicircular colonnade bulging out of the front facade (계명아트센터).
+  // Semicircular colonnade bulging out of the front facade (계명아트센터, 동천관 rotunda).
+  // meta.colonnadeAt (0..1 from the west end), meta.colonnadeRadius, meta.colonnadeDome.
   curved_colonnade(rec, g, mats, ctx) {
     const { length: L, width: W } = rec.obb;
     const side = frontSide(rec);
-    const R = THREE.MathUtils.clamp(L * 0.28, 10, 24);
-    const colH = Math.min(rec.height - 2, 15);
+    const R = rec.meta?.colonnadeRadius ?? THREE.MathUtils.clamp(L * 0.28, 10, 24);
+    const colH = Math.min(rec.height - 2, rec.meta?.colonnadeHeight ?? 15);
     const cx = side * (W / 2);
-    const n = Math.max(7, Math.round((Math.PI * R) / 3.2));
+    const z0 = alongFromWest(rec, rec.meta?.colonnadeAt ?? 0.5);
+    const n = Math.max(6, Math.round((Math.PI * R) / 3.2));
     const colGeom = new THREE.CylinderGeometry(0.55, 0.62, colH, 14);
     for (let i = 0; i <= n; i++) {
       const a = (i / n) * Math.PI;
-      add(rec, g, colGeom, mats.white, cx + side * Math.sin(a) * R, 0.6 + colH / 2, -Math.cos(a) * R);
+      add(rec, g, colGeom, mats.white, cx + side * Math.sin(a) * R, 0.6 + colH / 2, z0 - Math.cos(a) * R);
     }
     // Curved entablature and a half-disc canopy on top of the columns.
     const theta0 = side > 0 ? 0 : Math.PI;
     const band = new THREE.CylinderGeometry(R + 0.8, R + 0.8, 1.6, 48, 1, true, theta0, Math.PI);
     const bandMat = mats.white.clone(); // open band is seen from both sides
     bandMat.side = THREE.DoubleSide;
-    add(rec, g, band, bandMat, cx, 0.6 + colH + 0.8, 0);
+    add(rec, g, band, bandMat, cx, 0.6 + colH + 0.8, z0);
     // CircleGeometry lies in XY; after rotateX(-PI/2) its x stays x, so cos(theta) >= 0 faces +x.
     const discStart = side > 0 ? -Math.PI / 2 : Math.PI / 2;
     const disc = new THREE.CircleGeometry(R + 0.8, 48, discStart, Math.PI);
     disc.rotateX(-Math.PI / 2);
-    add(rec, g, disc, mats.white, cx, 0.6 + colH + 1.6, 0);
+    add(rec, g, disc, mats.white, cx, 0.6 + colH + 1.6, z0);
     const base = new THREE.CircleGeometry(R + 3, 48, discStart, Math.PI);
     base.rotateX(-Math.PI / 2);
-    add(rec, g, base, mats.stone, cx, 0.6, 0);
-    ctx.top = Math.max(ctx.top, colH + 2.2);
+    add(rec, g, base, mats.stone, cx, 0.6, z0);
+    let top = colH + 2.2;
+    if (rec.meta?.colonnadeDome) {
+      // Quarter sphere over the rotunda; SphereGeometry x = -r cos(phi) sin(theta).
+      const phi0 = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+      add(rec, g, new THREE.SphereGeometry(R + 0.8, 32, 12, phi0, Math.PI, 0, Math.PI / 2), roofPaint(rec), cx, 0.6 + colH + 1.6, z0);
+      top += R + 0.8;
+    }
+    ctx.top = Math.max(ctx.top, top);
   },
 
-  // Drum + dome on the roof center.
+  // Stage fly tower rising above the auditorium roof, on the north side (계명아트센터).
+  fly_tower(rec, g, mats, ctx) {
+    const { length: L, width: W, d } = rec.obb;
+    const h = rec.height * 0.6 + ctx.rise;
+    const z = (d.y >= 0 ? 1 : -1) * L * 0.22;
+    box(rec, g, rec.set.plain, W * 0.5, rec.height + h, L * 0.3, 0, 0, z);
+    box(rec, g, mats.white, W * 0.5 + 0.8, 0.9, L * 0.3 + 0.8, 0, rec.height + h - 0.9, z);
+    ctx.top = Math.max(ctx.top, rec.height + h);
+  },
+
+  // Drum + dome on the roof center (skipped when the tower already carries the dome).
   dome(rec, g, mats, ctx) {
+    if (ctx.towerDome) return;
     const r = Math.min(rec.obb.width, rec.obb.length) * 0.28;
     const y = rec.height + ctx.rise * 0.6;
     add(rec, g, new THREE.CylinderGeometry(r, r, 3, 32), mats.stone, 0, y + 1.5, 0);
@@ -335,7 +381,7 @@ export function addLandmark(rec, group, mats) {
   const ex = rec.style.extras;
   const rise = ex.includes('hanok_roof') ? 0 : buildRoof(rec, g, mats);
   const ctx = { rise, top: rec.height + rise };
-  for (const name of ['hanok_roof', 'dome', 'white_cupola_spire', 'central_tower', 'portico_columns', 'curved_colonnade', 'glass_atrium', 'dormers', 'rooftop_structure']) {
+  for (const name of ['hanok_roof', 'white_cupola_spire', 'central_tower', 'dome', 'portico_columns', 'curved_colonnade', 'fly_tower', 'glass_atrium', 'dormers', 'rooftop_structure']) {
     if (ex.includes(name) || (name === 'dome' && rec.style.roof === 'dome')) extras[name](rec, g, mats, ctx);
   }
   rec.topY = Math.max(rec.height + ctx.rise, ctx.top);

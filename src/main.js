@@ -11,7 +11,8 @@ import { initUI } from './ui.js';
 const container = document.getElementById('scene');
 
 const [data, meta, terrain] = await Promise.all([
-  fetch('data/campus.json').then((r) => r.json()),
+  // ?data=<path> loads another campus.json (e.g. to preview an import before replacing the real one).
+  fetch(new URLSearchParams(location.search).get('data') ?? 'data/campus.json').then((r) => r.json()),
   fetch('data/buildings_meta.json').then((r) => r.json()),
   loadTerrain(),
 ]);

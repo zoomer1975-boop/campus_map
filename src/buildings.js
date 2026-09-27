@@ -296,7 +296,7 @@ export function styleSet(key, wallHex, roofHex) {
     pal,
     wall: facadeMaterial(key, wallHex),
     plain: photoMaterial(pal.base, { tint: wallHex ?? pal.tint }),
-    roof: photoMaterial('concrete', { tint: pal.roofTint }),
+    roof: photoMaterial('concrete', { tint: roofHex ?? pal.roofTint }),
     slate: photoMaterial(slateKey, { tint: roofHex ?? (key === 'hanok' ? '#46484c' : '#595d63'), rotation: roofRot }),
     slateCone: photoMaterial('slate', { tint: roofHex ?? '#595d63', repeat: [10, 4] }),
   };
@@ -433,9 +433,11 @@ export function buildBuildings(data, meta, proj, heightAt = () => 0) {
     const holes = (b.holes || []).map((h) => open(h.map(proj)));
     // Sit on the lowest ground under the footprint; on slopes the uphill side is dug in.
     const base = Math.min(...outer.map((p) => heightAt(p.x, p.y)));
-    const displayName = b.name ? meta.aliases[b.name] ?? b.name : null;
-    const m = displayName ? meta.buildings[displayName] : null;
-    const campus = b.campus;
+    // Meta is keyed by display name, or by OSM id for buildings OSM leaves unnamed.
+    const aliased = b.name ? meta.aliases[b.name] ?? b.name : null;
+    const m = (aliased && meta.buildings[aliased]) ?? meta.buildings[b.id] ?? meta.buildings[b.tags['osm:id']] ?? null;
+    const displayName = aliased ?? m?.name ?? null;
+    const campus = m?.campus ?? b.campus;
     const detail = m?.detail ?? (campus ? 'auto' : 'flat');
     const tagLevels = parseLevels(b.tags);
 
@@ -473,7 +475,9 @@ export function buildBuildings(data, meta, proj, heightAt = () => 0) {
       style,
       set,
       floors,
-      floorsSource: tagLevels ? (b.tags['reg:id'] != null ? 'register' : 'osm') : m?.floors != null ? 'estimate' : 'default',
+      floorsSource: tagLevels
+        ? (b.tags['reg:id'] != null && b.tags['levels:source'] !== 'osm' ? 'register' : 'osm')
+        : m?.floors != null ? 'estimate' : 'default',
       height,
       base,
       topY: height,
