@@ -94,7 +94,7 @@ export function initUI({ entries, categories, onPick, onClose, onNight, onLabels
         <dl>
           <div><dt>층수</dt><dd>${floors}층 <small>${src}</small></dd></div>
           <div><dt>최고 높이</dt><dd>약 ${Math.round(height)} m</dd></div>
-          <div><dt>바닥 면적</dt><dd>${Math.round(entry.footprint).toLocaleString()} m²${entry.records.length > 1 ? ` <small>${entry.records.length}개 동</small>` : ''}</dd></div>
+          ${m?.custom ? '' : `<div><dt>바닥 면적</dt><dd>${Math.round(entry.footprint).toLocaleString()} m²${entry.records.length > 1 ? ` <small>${entry.records.length}개 동</small>` : ''}</dd></div>`}
         </dl>
         ${regLine ? `<p class="osm">건축물대장: ${escapeHtml(regLine)}</p>` : ''}
         ${osmLinks ? `<p class="osm">OSM: ${osmLinks}</p>` : ''}`;

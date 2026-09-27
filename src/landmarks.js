@@ -375,7 +375,104 @@ const extras = {
   },
 };
 
+// ---------- custom structures (not extruded footprints) ----------
+
+// Ionic column: plinth, base ring, tapering shaft, capital with side volutes.
+function ionicColumn(rec, g, mats, x, z, h, r = 0.42) {
+  box(rec, g, mats.white, r * 2.7, 0.35, r * 2.7, x, 0, z);
+  add(rec, g, new THREE.CylinderGeometry(r * 1.25, r * 1.35, 0.3, 20), mats.white, x, 0.5, z);
+  const shaftH = h - 1.2;
+  add(rec, g, new THREE.CylinderGeometry(r * 0.88, r, shaftH, 20), mats.white, x, 0.65 + shaftH / 2, z);
+  box(rec, g, mats.white, r * 3, 0.28, r * 2.3, x, h - 0.28, z);
+  const volute = new THREE.CylinderGeometry(r * 0.42, r * 0.42, r * 2.3, 16);
+  volute.rotateX(Math.PI / 2);
+  for (const sx of [-1, 1]) add(rec, g, volute, mats.white, x + sx * r * 1.25, h - 0.5, z);
+}
+
+// Colonnaded pavilion: rows of columns under an entablature, optionally with a pediment
+// facing local +z. Width runs along x, depth along z.
+function pavilion(rec, g, mats, { cx, cz = 0, w, d, colH, cols = 4, rows = 2, pediment = 0 }) {
+  for (let r = 0; r < rows; r++) {
+    const z = cz + (rows === 1 ? 0 : -d / 2 + (d * r) / (rows - 1));
+    for (let c = 0; c < cols; c++) ionicColumn(rec, g, mats, cx - w / 2 + (w * c) / (cols - 1), z, colH);
+  }
+  box(rec, g, mats.white, w + 1.1, 0.55, d + 1.1, cx, colH, cz); // architrave
+  box(rec, g, mats.stone, w + 1.2, 0.65, d + 1.2, cx, colH + 0.55, cz); // frieze
+  box(rec, g, mats.white, w + 1.8, 0.35, d + 1.8, cx, colH + 1.2, cz); // cornice
+  let top = colH + 1.55;
+  if (pediment > 0) {
+    const hw = (w + 1.8) / 2;
+    const shape = new THREE.Shape([new THREE.Vector2(-hw, 0), new THREE.Vector2(hw, 0), new THREE.Vector2(0, pediment)]);
+    const geom = new THREE.ExtrudeGeometry(shape, { depth: d + 1.8, bevelEnabled: false });
+    geom.translate(0, 0, -(d + 1.8) / 2);
+    add(rec, g, geom, [mats.stone, mats.white], cx, top, cz);
+    // Raking cornices and the university emblem in the tympanum.
+    const slope = Math.atan2(pediment, hw), len = Math.hypot(hw, pediment) + 0.3;
+    for (const sx of [-1, 1]) {
+      const rake = box(rec, g, mats.white, len, 0.3, d + 2.1, cx + (sx * hw) / 2, top + pediment / 2 - 0.15, cz);
+      rake.rotation.z = -sx * slope;
+    }
+    add(rec, g, new THREE.CircleGeometry(pediment * 0.28, 32), mats.white, cx, top + pediment * 0.38, cz + (d + 1.8) / 2 + 0.03);
+    top += pediment;
+  }
+  return top;
+}
+
+// Frame for custom structures: centered on the (shifted) anchor, local x along meta.axisDeg
+// (degrees from east, counter-clockwise), local +z facing the approach.
+function customFrame(rec, group) {
+  const g = new THREE.Group();
+  g.position.set(rec.obb.center.x, rec.base ?? 0, -rec.obb.center.y);
+  g.rotation.y = THREE.MathUtils.degToRad(rec.meta?.axisDeg ?? 0);
+  group.add(g);
+  return g;
+}
+
+// Frame (x, z) of a custom structure → local map coords (east, north).
+function frameToMap(rec, x, z) {
+  const a = THREE.MathUtils.degToRad(rec.meta?.axisDeg ?? 0), c = rec.obb.center;
+  return { x: c.x + Math.cos(a) * x + Math.sin(a) * z, y: c.y + Math.sin(a) * x - Math.cos(a) * z };
+}
+
+// Ask the ground painter to pave a frame-aligned rectangle (drapes exactly on the terrain).
+function pave(rec, x0, x1, z0, z1, kind = 'pavers') {
+  (rec.groundPaint ??= []).push({ kind, pts: [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(([x, z]) => frameToMap(rec, x, z)) });
+}
+
+const custom = {
+  // 정문: pedimented central gate over the entry road, a colonnaded pavilion on each side,
+  // brick-paved forecourts and low brick walls continuing the gate line.
+  main_gate(rec, g, mats) {
+    const top = pavilion(rec, g, mats, { cx: 0, w: 14, d: 6, colH: 7.2, pediment: 2.7 });
+    for (const sx of [-1, 1]) {
+      pavilion(rec, g, mats, { cx: sx * 21, w: 13, d: 4.4, colH: 6 });
+      pave(rec, sx * 8.5, sx * 34, -5, 17); // brick-paved forecourt under and in front of the pavilion
+      box(rec, g, mats.brick.plain, 14, 1.7, 0.5, sx * 42, 0, 0);
+      box(rec, g, mats.stone, 14.2, 0.18, 0.7, sx * 42, 1.7, 0);
+    }
+    rec.topY = top;
+  },
+
+  // 정문수위실: small temple-front guardhouse on the median.
+  gatehouse(rec, g, mats) {
+    box(rec, g, mats.white, 4.6, 3.4, 5.2, 0, 0, -0.8);
+    const shape = new THREE.Shape([new THREE.Vector2(-3, 0), new THREE.Vector2(3, 0), new THREE.Vector2(0, 1.4)]);
+    const geom = new THREE.ExtrudeGeometry(shape, { depth: 7.4, bevelEnabled: false });
+    geom.translate(0, 0, -3.7 - 0.2);
+    add(rec, g, geom, [mats.white, rec.set.slate], 0, 3.4, 0);
+    box(rec, g, mats.white, 6, 0.3, 7.6, 0, 3.2, -0.2);
+    for (const sx of [-1, 1]) ionicColumn(rec, g, mats, sx * 1.9, 2.8, 3.2, 0.24);
+    box(rec, g, mats.glassPanel, 2.8, 1.2, 0.1, 0, 1.1, 1.85);
+    rec.topY = 4.8;
+  },
+};
+
 export function addLandmark(rec, group, mats) {
+  const special = rec.meta?.custom && custom[rec.meta.custom];
+  if (special) {
+    special(rec, customFrame(rec, group), mats);
+    return;
+  }
   if (rec.style.roof === 'none') return;
   const g = frame(rec, group);
   const ex = rec.style.extras;

@@ -277,6 +277,7 @@ export function materials() {
   matCache.clock.userData.isClock = true;
   nightMaterials.add(matCache.clock);
   matCache.canopy = new THREE.MeshStandardMaterial({ color: '#e7e8ea', roughness: 0.35, metalness: 0.5 });
+  matCache.paver = photoMaterial('brick', { tint: '#8c5446', normalScale: 0.5 });
   matCache.glassPanel = new THREE.MeshStandardMaterial({ color: '#5d7894', roughness: 0.08, metalness: 0.7, transparent: true, opacity: 0.85 });
   return matCache;
 }
@@ -428,16 +429,32 @@ export function buildBuildings(data, meta, proj, heightAt = () => 0) {
   const cornices = [], plinths = [];
 
   for (const b of data.buildings) {
-    const outer = open(b.outer.map(proj));
+    let outer = open(b.outer.map(proj));
     if (outer.length < 3) continue;
     const holes = (b.holes || []).map((h) => open(h.map(proj)));
-    // Sit on the lowest ground under the footprint; on slopes the uphill side is dug in.
-    const base = Math.min(...outer.map((p) => heightAt(p.x, p.y)));
     // Meta is keyed by display name, or by OSM id for buildings OSM leaves unnamed.
     const aliased = b.name ? meta.aliases[b.name] ?? b.name : null;
     const m = (aliased && meta.buildings[aliased]) ?? meta.buildings[b.id] ?? meta.buildings[b.tags['osm:id']] ?? null;
     const displayName = aliased ?? m?.name ?? null;
     const campus = m?.campus ?? b.campus;
+    // Custom structures (e.g. 정문) replace point-like register footprints: move the anchor by
+    // meta.shift [east, north] and use meta.clearance [width, depth] as the footprint box.
+    if (m?.custom) {
+      const c = outer.reduce((a, p) => ({ x: a.x + p.x / outer.length, y: a.y + p.y / outer.length }), { x: 0, y: 0 });
+      const [sx, sy] = m.shift ?? [0, 0];
+      const [cw, cd] = m.clearance ?? [6, 6];
+      const a = THREE.MathUtils.degToRad(m.axisDeg ?? 0);
+      const ux = { x: Math.cos(a), y: Math.sin(a) }, uz = { x: Math.sin(a), y: -Math.cos(a) }; // local x, local +z
+      outer = [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([i, j]) => ({
+        x: c.x + sx + ux.x * (i * cw) / 2 + uz.x * (j * cd) / 2,
+        y: c.y + sy + ux.y * (i * cw) / 2 + uz.y * (j * cd) / 2,
+      }));
+    }
+    // Sit on the lowest ground under the footprint (uphill side dug in); custom structures
+    // use the ground at their center.
+    const base = m?.custom
+      ? heightAt(outer.reduce((a, p) => a + p.x, 0) / outer.length, outer.reduce((a, p) => a + p.y, 0) / outer.length)
+      : Math.min(...outer.map((p) => heightAt(p.x, p.y)));
     const detail = m?.detail ?? (campus ? 'auto' : 'flat');
     const tagLevels = parseLevels(b.tags);
 
@@ -487,8 +504,13 @@ export function buildBuildings(data, meta, proj, heightAt = () => 0) {
       meshes: [mesh],
     };
     mesh.userData.record = rec;
-    group.add(mesh);
-    if (campus && !['hanok', 'amphi'].includes(detail) && height > 5) {
+    if (m?.custom) {
+      rec.meshes.length = 0; // the custom builder provides all geometry
+      rec.height = 0;
+    } else {
+      group.add(mesh);
+    }
+    if (campus && !m?.custom && !['hanok', 'amphi'].includes(detail) && height > 5) {
       edgeStrips(outer, base + height - 0.75, 0.75, 0.55, 0.12, cornices);
       edgeStrips(outer, base, 0.9, 0.22, 0.06, plinths);
     }

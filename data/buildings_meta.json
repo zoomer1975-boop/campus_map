@@ -741,11 +741,19 @@
    "roof": "hip"
   },
   "정문": {
-   "category": "기타",
-   "wall": "stone",
-   "roof": "flat",
-   "extras": [],
-   "desc": "정문. 흰 석조 열주 게이트(안내도 기준)."
+   "category": "상징·행정",
+   "major": true,
+   "custom": "main_gate",
+   "axisDeg": 0,
+   "shift": [
+    1.7,
+    -35
+   ],
+   "clearance": [
+    96,
+    50
+   ],
+   "desc": "정문. 가운데 페디먼트 게이트와 양쪽 이오니아식 열주 파빌리온으로 된 흰 석조 문(로드뷰 사진 참고). 건축물대장에는 점으로만 있어 위치를 입구 쪽으로 맞췄습니다."
   },
   "공학4호관": {
    "category": "강의·연구",
@@ -757,6 +765,21 @@
    "extras": [
     "rooftop_structure"
    ]
+  },
+  "정문수위실": {
+   "category": "기타",
+   "custom": "gatehouse",
+   "axisDeg": 0,
+   "shift": [
+    2.9,
+    35
+   ],
+   "clearance": [
+    8,
+    10
+   ],
+   "roofHex": "#8a8f96",
+   "desc": "정문 수위실. 신전 모양의 작은 석조 건물."
   }
  }
 }

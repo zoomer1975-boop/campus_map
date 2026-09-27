@@ -39,7 +39,7 @@ const AREA_STYLE = {
 
 // Paint lawns, pitches, parking and roads into one canvas that is draped over the terrain.
 // Canvas covers `extent` (square, local meters); transparent where the terrain shows through.
-function paintGround(extent, campusRings, areas, roads, heightAt, slopeAt) {
+function paintGround(extent, campusRings, areas, roads, heightAt, slopeAt, pavings = []) {
   const W = 4096, k = W / extent.size;
   const cv = document.createElement('canvas');
   cv.width = cv.height = W;
@@ -65,6 +65,16 @@ function paintGround(extent, campusRings, areas, roads, heightAt, slopeAt) {
     }
   }
   g.restore();
+  // Brick pavers requested by custom structures (e.g. the 정문 forecourts).
+  for (const pv of pavings) {
+    path(pv.pts); g.closePath();
+    g.fillStyle = '#93503f'; g.fill();
+    g.save(); g.clip();
+    g.strokeStyle = 'rgba(60,25,18,0.35)'; g.lineWidth = Math.max(1, 0.06 * k);
+    const bb = bounds(pv.pts);
+    for (let y = bb.minY; y < bb.maxY; y += 0.6) { path([{ x: bb.minX, y }, { x: bb.maxX, y }]); g.stroke(); }
+    g.restore();
+  }
   for (const a of areas) {
     const st = AREA_STYLE[a.kind];
     path(a.pts); g.closePath();
@@ -203,7 +213,8 @@ export function buildGround(data, proj, records, terrain) {
   const size = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY) + 200;
   const extent = { minX: (bb.minX + bb.maxX) / 2 - size / 2, minY: (bb.minY + bb.maxY) / 2 - size / 2, size };
   const canopy = foliageTexture();
-  group.add(...buildTerrainMeshes(terrain, paintGround(extent, campusRings, areas, roads, heightAt, slopeAt), extent, canopy));
+  const pavings = records.flatMap((r) => r.groundPaint ?? []);
+  group.add(...buildTerrainMeshes(terrain, paintGround(extent, campusRings, areas, roads, heightAt, slopeAt, pavings), extent, canopy));
 
   const onRoad = segmentGrid(roads);
   const buildingBoxes = records.map((r) => ({ pts: r.outer, bb: bounds(r.outer) }));
