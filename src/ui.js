@@ -73,7 +73,7 @@ export function initUI({ entries, categories, onPick, onClose, onNight, onLabels
       const m = entry.meta;
       const r0 = entry.records[0];
       const floors = Math.max(...entry.records.map((r) => r.floors));
-      const height = Math.max(...entry.records.map((r) => r.topY));
+      const height = Math.max(...entry.records.map((r) => r.topY)); // above the building's own base
       const src = { register: '건축물대장', osm: 'OSM 기준', estimate: '추정', default: '기본값' }[r0.floorsSource];
       const reg = entry.records.map((r) => r.tags).find((t) => t['reg:name'] || t['reg:dong'] || t['reg:use']);
       const approved = reg?.['reg:approved']?.replace(/^(\d{4})(\d{2})(\d{2})$/, '$1.$2.$3');

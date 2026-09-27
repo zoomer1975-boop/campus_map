@@ -4,24 +4,27 @@ import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
 import { makeProjector } from './geo.js';
 import { buildBuildings, setHighlight, setNightLevel as setWindowNight } from './buildings.js';
 import { buildGround } from './ground.js';
+import { loadTerrain } from './terrain.js';
 import { createLabels } from './labels.js';
 import { initUI } from './ui.js';
 
 const container = document.getElementById('scene');
 
-const [data, meta] = await Promise.all([
+const [data, meta, terrain] = await Promise.all([
   fetch('data/campus.json').then((r) => r.json()),
   fetch('data/buildings_meta.json').then((r) => r.json()),
+  loadTerrain(),
 ]);
 const proj = makeProjector(data.center);
-if (data.buildingSource) {
-  document.getElementById('attribution').innerHTML =
-    '건물: 국토교통부 GIS건물통합정보 (브이월드, CC BY) · 도로·녹지 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
-}
+const osmCredit = '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors';
+document.getElementById('attribution').innerHTML = [
+  data.buildingSource ? `건물: 국토교통부 GIS건물통합정보 (브이월드, CC BY) · 도로·녹지 ${osmCredit}` : `지도 데이터 ${osmCredit} · 층수는 추정값`,
+  terrain.meta.attribution,
+].join('<br>');
 
 // ---------- renderer / scene / camera ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -29,9 +32,10 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 container.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.Fog('#dfe9f1', 1400, 5200);
+// Far fog so the distant mountain ring (up to 18 km) fades into the horizon haze.
+scene.fog = new THREE.Fog('#dfe9f1', 1800, 17000);
 
-const camera = new THREE.PerspectiveCamera(42, 1, 1, 12000);
+const camera = new THREE.PerspectiveCamera(42, 1, 1, 40000);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping = true;
 controls.dampingFactor = 0.08;
@@ -51,6 +55,7 @@ const skyUniforms = {
   hasHdr: { value: 0 },
   hdrExposure: { value: 1.0 },
   night: { value: 0 },
+  haze: { value: new THREE.Color('#d3dde6') },
 };
 const sky = new THREE.Mesh(
   new THREE.SphereGeometry(8000, 48, 24),
@@ -61,7 +66,7 @@ const sky = new THREE.Mesh(
     depthTest: false,
     vertexShader: `varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
     fragmentShader: `#include <common>
-      uniform vec3 top; uniform vec3 bottom; uniform sampler2D hdr; uniform float hasHdr; uniform float hdrExposure; uniform float night;
+      uniform vec3 top; uniform vec3 bottom; uniform sampler2D hdr; uniform float hasHdr; uniform float hdrExposure; uniform float night; uniform vec3 haze;
       varying vec3 vDir;
       void main(){
         vec3 dir = normalize(vDir);
@@ -73,6 +78,8 @@ const sky = new THREE.Mesh(
           vec3 photo = texture2D(hdr, equirectUv(d)).rgb * hdrExposure;
           col = mix(photo, col, night);
         }
+        // Blend into the fog color at the horizon so the terrain edge disappears in haze.
+        col = mix(haze, col, smoothstep(-0.01, 0.09, dir.y));
         gl_FragColor = vec4(col, 1.0);
         #include <tonemapping_fragment>
         #include <colorspace_fragment>
@@ -87,7 +94,7 @@ const stars = (() => {
   const pos = [];
   for (let i = 0; i < 1600; i++) {
     const u = Math.random() * Math.PI * 2, v = Math.random() * 0.45 + 0.08;
-    const r = 7000;
+    const r = 30000;
     pos.push(Math.cos(u) * Math.cos(v) * r, Math.sin(v) * r, Math.sin(u) * Math.cos(v) * r);
   }
   const g = new THREE.BufferGeometry();
@@ -119,12 +126,14 @@ new RGBELoader().load('assets/hdri/kloofendal_48d_partly_cloudy_puresky_1k.hdr',
 });
 
 // ---------- content ----------
-const { group: buildingGroup, records, entries } = buildBuildings(data, meta, proj);
-const ground = buildGround(data, proj, records);
+const { heightAt } = terrain;
+const { group: buildingGroup, records, entries } = buildBuildings(data, meta, proj, heightAt);
+const ground = buildGround(data, proj, records, terrain);
 scene.add(ground.group, buildingGroup);
 
 const cb = ground.campusBounds;
 const campusCenter = new THREE.Vector3((cb.minX + cb.maxX) / 2, 0, -(cb.minY + cb.maxY) / 2);
+campusCenter.y = heightAt(campusCenter.x, -campusCenter.z);
 sun.target.position.copy(campusCenter);
 const SUN_DAY = new THREE.Vector3(-0.55, 0.72, 0.42).normalize();
 const SUN_NIGHT = new THREE.Vector3(0.45, 0.8, -0.4).normalize();
@@ -137,11 +146,11 @@ let selected = null;
 let flight = null;
 
 function flyTo(entry) {
-  const target = new THREE.Vector3(entry.center.x, entry.top * 0.35, -entry.center.y);
+  const target = new THREE.Vector3(entry.center.x, entry.base + (entry.top - entry.base) * 0.35, -entry.center.y);
   const dir = camera.position.clone().sub(controls.target).normalize();
   dir.y = Math.max(dir.y, 0.55);
   dir.normalize();
-  const dist = THREE.MathUtils.clamp(entry.size * 2.4 + entry.top * 1.5, 90, 420);
+  const dist = THREE.MathUtils.clamp(entry.size * 2.4 + (entry.top - entry.base) * 1.5, 90, 420);
   flight = {
     t0: performance.now(),
     dur: 1300,
@@ -198,6 +207,7 @@ function applyNight(t) {
   skyUniforms.night.value = t;
   scene.environmentIntensity = THREE.MathUtils.lerp(DAY.env, NIGHT.env, t);
   scene.fog.color.lerpColors(new THREE.Color('#d3dde6'), NIGHT.bottom, t);
+  skyUniforms.haze.value.copy(scene.fog.color);
   hemi.color.lerpColors(DAY.hemiSky, NIGHT.hemiSky, t);
   hemi.groundColor.lerpColors(DAY.hemiGround, NIGHT.hemiGround, t);
   hemi.intensity = THREE.MathUtils.lerp(DAY.hemiI, NIGHT.hemiI, t);
@@ -286,6 +296,9 @@ renderer.setAnimationLoop((now) => {
     if (k >= 1) flight = null;
   }
   controls.update();
+  // Never let the camera dip below the hills.
+  const minY = heightAt(camera.position.x, -camera.position.z) + 6;
+  if (camera.position.y < minY) camera.position.y = minY;
   sky.position.copy(camera.position);
   stars.position.copy(camera.position);
   labels.update(camera);
@@ -301,4 +314,4 @@ THREE.DefaultLoadingManager.onProgress = (_url, loaded, total) => {
 };
 THREE.DefaultLoadingManager.onLoad = hideLoading;
 setTimeout(hideLoading, 10000);
-Object.assign(window, { __campus: { scene, camera, controls, entries, records, select, stats: ground.stats } });
+Object.assign(window, { __campus: { scene, camera, controls, renderer, entries, records, select, stats: ground.stats } });

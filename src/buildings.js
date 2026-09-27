@@ -419,7 +419,7 @@ function resolveStyle(campus, detail, m, tags) {
  * Build meshes for every OSM building.
  * Returns { group, records, entries } where entries groups records by display name.
  */
-export function buildBuildings(data, meta, proj) {
+export function buildBuildings(data, meta, proj, heightAt = () => 0) {
   const mats = materials();
   const group = new THREE.Group();
   group.name = 'buildings';
@@ -431,6 +431,8 @@ export function buildBuildings(data, meta, proj) {
     const outer = open(b.outer.map(proj));
     if (outer.length < 3) continue;
     const holes = (b.holes || []).map((h) => open(h.map(proj)));
+    // Sit on the lowest ground under the footprint; on slopes the uphill side is dug in.
+    const base = Math.min(...outer.map((p) => heightAt(p.x, p.y)));
     const displayName = b.name ? meta.aliases[b.name] ?? b.name : null;
     const m = displayName ? meta.buildings[displayName] : null;
     const campus = b.campus;
@@ -453,6 +455,7 @@ export function buildBuildings(data, meta, proj) {
     geom.rotateX(-Math.PI / 2);
 
     const mesh = new THREE.Mesh(geom, [set.roof, set.wall]);
+    mesh.position.y = base;
     mesh.castShadow = true;
     mesh.receiveShadow = true;
 
@@ -472,6 +475,7 @@ export function buildBuildings(data, meta, proj) {
       floors,
       floorsSource: tagLevels ? (b.tags['reg:id'] != null ? 'register' : 'osm') : m?.floors != null ? 'estimate' : 'default',
       height,
+      base,
       topY: height,
       footprint: area(outer),
       outer,
@@ -481,8 +485,8 @@ export function buildBuildings(data, meta, proj) {
     mesh.userData.record = rec;
     group.add(mesh);
     if (campus && !['hanok', 'amphi'].includes(detail) && height > 5) {
-      edgeStrips(outer, height - 0.75, 0.75, 0.55, 0.12, cornices);
-      edgeStrips(outer, 0, 0.9, 0.22, 0.06, plinths);
+      edgeStrips(outer, base + height - 0.75, 0.75, 0.55, 0.12, cornices);
+      edgeStrips(outer, base, 0.9, 0.22, 0.06, plinths);
     }
     addLandmark(rec, group, mats);
     records.push(rec);
@@ -497,15 +501,17 @@ export function buildBuildings(data, meta, proj) {
     entries.get(key).records.push(rec);
   }
   for (const e of entries.values()) {
-    let ax = 0, ay = 0, wsum = 0, top = 0, ext = 0;
+    let ax = 0, ay = 0, wsum = 0, top = -Infinity, base = Infinity, ext = 0;
     for (const r of e.records) {
       ax += r.obb.center.x * r.footprint; ay += r.obb.center.y * r.footprint; wsum += r.footprint;
-      top = Math.max(top, r.topY);
+      top = Math.max(top, r.base + r.topY); // absolute
+      base = Math.min(base, r.base);
       ext = Math.max(ext, r.obb.length);
       r.entry = e;
     }
     e.center = { x: ax / wsum, y: ay / wsum };
     e.top = top;
+    e.base = base;
     e.size = ext;
     e.footprint = wsum;
     e.category = e.meta?.category ?? (e.campus ? '기타' : null);

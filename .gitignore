@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.DS_Store
+# downloaded terrain tiles (rebuilt by scripts/fetch_terrain.py)
+scripts/.cache/

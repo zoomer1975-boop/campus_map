@@ -1,0 +1,26 @@
+{
+  "attribution": "지형: Terrain Tiles (Mapzen, AWS Open Data) · SRTM, GMTED2010 (USGS), ETOPO1 (NOAA)",
+  "center": [
+    35.8567,
+    128.4849
+  ],
+  "ref": 22.6,
+  "grids": {
+    "inner": {
+      "file": "inner.bin",
+      "n": 401,
+      "half": 2400.0,
+      "step": 12.0,
+      "min": 4.4,
+      "max": 292.4
+    },
+    "outer": {
+      "file": "outer.bin",
+      "n": 241,
+      "half": 18000.0,
+      "step": 150.0,
+      "min": 1.1,
+      "max": 1061.4
+    }
+  }
+}

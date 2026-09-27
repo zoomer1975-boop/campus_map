@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { mergeGeometries, mergeVertices } from 'three/addons/utils/BufferGeometryUtils.js';
 import { open, area, bounds, pointInPoly, distSqToSeg, rng } from './geo.js';
+import { buildTerrainMeshes, forestMask } from './terrain.js';
 
 const ROAD_STYLE = {
   primary: { w: 18, cls: 'major' },
@@ -15,10 +16,10 @@ const ROAD_STYLE = {
   path: { w: 2.2, cls: 'foot' },
   steps: { w: 3, cls: 'foot' },
 };
-const ROAD_MAT = {
-  major: { color: '#55595f', y: 0.42 },
-  minor: { color: '#6b6e74', y: 0.38 },
-  foot: { color: '#cdbfa6', y: 0.34 },
+const ROAD_PAINT = {
+  major: { color: '#4f5257', edge: '#c9c6bd', edgeW: 1.2 },
+  minor: { color: '#66686d', edge: '#bdb9ae', edgeW: 0.8 },
+  foot: { color: '#c9b9a0', edge: null, edgeW: 0 },
 };
 
 const AREA_STYLE = {
@@ -36,43 +37,72 @@ const AREA_STYLE = {
   stadium: { color: '#8c8e92', y: 0.24 },
 };
 
-function flatShape(rings, y, material) {
-  const shape = new THREE.Shape(rings[0].map((p) => new THREE.Vector2(p.x, p.y)));
-  for (const h of rings.slice(1)) shape.holes.push(new THREE.Path(h.map((p) => new THREE.Vector2(p.x, p.y))));
-  const geom = new THREE.ShapeGeometry(shape);
-  geom.rotateX(-Math.PI / 2);
-  const mesh = new THREE.Mesh(geom, material);
-  mesh.position.y = y;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function ribbon(lines, y) {
-  const pos = [], idx = [];
-  for (const { pts, w } of lines) {
-    const base = pos.length / 3;
-    for (let i = 0; i < pts.length; i++) {
-      const a = pts[Math.max(0, i - 1)], b = pts[Math.min(pts.length - 1, i + 1)];
-      let tx = b.x - a.x, ty = b.y - a.y;
-      const len = Math.hypot(tx, ty) || 1;
-      tx /= len; ty /= len;
-      const nx = -ty * (w / 2), ny = tx * (w / 2);
-      const p = pts[i];
-      pos.push(p.x + nx, y, -(p.y + ny), p.x - nx, y, -(p.y - ny));
-      if (i > 0) {
-        const k = base + (i - 1) * 2;
-        idx.push(k, k + 1, k + 2, k + 1, k + 3, k + 2);
-      }
+// Paint lawns, pitches, parking and roads into one canvas that is draped over the terrain.
+// Canvas covers `extent` (square, local meters); transparent where the terrain shows through.
+function paintGround(extent, campusRings, areas, roads, heightAt, slopeAt) {
+  const W = 4096, k = W / extent.size;
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = W;
+  const g = cv.getContext('2d');
+  const P = (p) => [(p.x - extent.minX) * k, (extent.minY + extent.size - p.y) * k];
+  const path = (pts) => {
+    g.beginPath();
+    pts.forEach((p, i) => (i ? g.lineTo(...P(p)) : g.moveTo(...P(p))));
+  };
+  // Campus lawn, darkened toward forest on the wooded upper slopes.
+  g.fillStyle = '#86ad5f';
+  for (const ring of campusRings) { path(ring); g.closePath(); g.fill(); }
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  const cell = 6;
+  for (let y = extent.minY; y < extent.minY + extent.size; y += cell) {
+    for (let x = extent.minX; x < extent.minX + extent.size; x += cell) {
+      const f = forestMask(heightAt(x, y), slopeAt(x, y));
+      if (f < 0.05) continue;
+      g.fillStyle = `rgba(58,88,46,${(f * 0.9).toFixed(2)})`;
+      const [px, py] = P({ x, y: y + cell });
+      g.fillRect(px, py, cell * k + 1, cell * k + 1);
     }
   }
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geom.setIndex(idx);
-  geom.computeVertexNormals();
-  // Ribbons are flat; force upward normals regardless of winding.
-  const n = geom.attributes.normal;
-  for (let i = 0; i < n.count; i++) n.setXYZ(i, 0, 1, 0);
-  return geom;
+  g.restore();
+  for (const a of areas) {
+    const st = AREA_STYLE[a.kind];
+    path(a.pts); g.closePath();
+    g.fillStyle = st.color; g.fill();
+    if (a.kind === 'pitch') { g.strokeStyle = 'rgba(255,255,255,0.8)'; g.lineWidth = 0.15 * k; g.stroke(); }
+  }
+  // Roads: curb/edge line first, then asphalt, then a dashed centre line on major roads.
+  g.lineCap = g.lineJoin = 'round';
+  for (const cls of ['foot', 'minor', 'major']) {
+    const st = ROAD_PAINT[cls];
+    const list = roads.filter((r) => r.cls === cls);
+    if (st.edge) {
+      g.strokeStyle = st.edge;
+      for (const r of list) { g.lineWidth = (r.w + st.edgeW * 2) * k; path(r.pts); g.stroke(); }
+    }
+    g.strokeStyle = st.color;
+    for (const r of list) { g.lineWidth = r.w * k; path(r.pts); g.stroke(); }
+  }
+  g.strokeStyle = 'rgba(240,236,220,0.85)';
+  g.lineWidth = 0.25 * k;
+  g.setLineDash([3 * k, 4 * k]);
+  for (const r of roads) if (r.cls === 'major') { path(r.pts); g.stroke(); }
+  g.setLineDash([]);
+  // Fine grain so flat colors read as grass / asphalt texture up close.
+  g.save();
+  g.globalCompositeOperation = 'source-atop';
+  const rand = rng(3);
+  for (let i = 0; i < 420000; i++) {
+    const v = rand() < 0.5 ? 0 : 255;
+    g.fillStyle = `rgba(${v},${v},${v},${(0.04 + rand() * 0.06).toFixed(3)})`;
+    g.fillRect(rand() * W, rand() * W, 1 + rand() * 2, 1 + rand() * 2);
+  }
+  g.restore();
+  g.clearRect(0, 0, W, 2); g.clearRect(0, W - 2, W, 2); g.clearRect(0, 0, 2, W); g.clearRect(W - 2, 0, 2, W);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 8;
+  return tex;
 }
 
 // Uniform grid over road segments for fast "is this point on a road?" checks.
@@ -100,9 +130,9 @@ function segmentGrid(roads, cell = 25) {
 
 // Lumpy deciduous crown: a few noise-displaced spheres merged, smooth-shaded.
 function crownGeometry() {
-  const lobes = [[0, 4.9, 0, 2.3], [1.2, 4.4, 0.5, 1.7], [-1.1, 4.5, -0.4, 1.8], [0.2, 6.0, -0.2, 1.6], [-0.3, 4.2, 1.1, 1.5]];
+  const lobes = [[0, 4.9, 0, 2.5], [1.2, 4.5, 0.6, 1.9], [-1.0, 5.4, -0.5, 1.9]];
   const parts = lobes.map(([x, y, z, r]) => {
-    const g = new THREE.IcosahedronGeometry(r, 3);
+    const g = new THREE.IcosahedronGeometry(r, 1); // ~80 triangles per lobe keeps 4.5k trees cheap
     g.deleteAttribute('uv');
     g.deleteAttribute('normal');
     const p = g.attributes.position;
@@ -145,53 +175,35 @@ function foliageTexture() {
   return t;
 }
 
-export function buildGround(data, proj, records) {
+export function buildGround(data, proj, records, terrain) {
   const group = new THREE.Group();
   group.name = 'ground';
-
-  const base = new THREE.Mesh(
-    new THREE.PlaneGeometry(9000, 9000).rotateX(-Math.PI / 2),
-    new THREE.MeshStandardMaterial({ color: '#98a283', roughness: 1 }),
-  );
-  base.receiveShadow = true;
-  group.add(base);
+  const { heightAt, slopeAt } = terrain;
 
   const campusRings = data.campusOutline.map((r) => open(r.map(proj)));
-  const campusMat = new THREE.MeshStandardMaterial({ color: '#8fb466', roughness: 1 });
-  for (const ring of campusRings) group.add(flatShape([ring], 0.1, campusMat));
 
-  // Areas (grass, pitches, parking, ...)
-  const areaMats = {};
   const areas = [];
   for (const a of data.areas) {
     let kind = a.kind;
     if (kind === 'pitch' && /athletics|running/.test(a.sport || '')) kind = 'track';
-    const style = AREA_STYLE[kind];
-    if (!style) continue;
-    areaMats[kind] ??= new THREE.MeshStandardMaterial({ color: style.color, roughness: 0.95 });
+    if (!AREA_STYLE[kind]) continue;
     const pts = open(a.poly.map(proj));
-    if (pts.length < 3) continue;
-    group.add(flatShape([pts], style.y, areaMats[kind]));
-    areas.push({ kind, pts, bb: bounds(pts) });
+    if (pts.length >= 3) areas.push({ kind, pts, bb: bounds(pts) });
   }
-
-  // Roads
   const roads = [];
-  const byClass = { major: [], minor: [], foot: [] };
   for (const r of data.roads) {
     const st = ROAD_STYLE[r.kind];
-    if (!st) continue;
     const pts = r.line.map(proj);
-    if (pts.length < 2) continue;
-    byClass[st.cls].push({ pts, w: st.w });
-    roads.push({ pts, w: st.w, cls: st.cls });
+    if (st && pts.length >= 2) roads.push({ pts, w: st.w, cls: st.cls });
   }
-  for (const [cls, lines] of Object.entries(byClass)) {
-    if (!lines.length) continue;
-    const mesh = new THREE.Mesh(ribbon(lines, ROAD_MAT[cls].y), new THREE.MeshStandardMaterial({ color: ROAD_MAT[cls].color, roughness: 0.95 }));
-    mesh.receiveShadow = true;
-    group.add(mesh);
-  }
+
+  // Ground map covers the fetched data area (plus a margin) as one square.
+  const all = [...roads.flatMap((r) => r.pts), ...campusRings.flat()];
+  const bb = bounds(all);
+  const size = Math.max(bb.maxX - bb.minX, bb.maxY - bb.minY) + 200;
+  const extent = { minX: (bb.minX + bb.maxX) / 2 - size / 2, minY: (bb.minY + bb.maxY) / 2 - size / 2, size };
+  const canopy = foliageTexture();
+  group.add(...buildTerrainMeshes(terrain, paintGround(extent, campusRings, areas, roads, heightAt, slopeAt), extent, canopy));
 
   const onRoad = segmentGrid(roads);
   const buildingBoxes = records.map((r) => ({ pts: r.outer, bb: bounds(r.outer) }));
@@ -227,7 +239,7 @@ export function buildGround(data, proj, records) {
   const c = new THREE.Color();
   trees.forEach((t, i) => {
     q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, rand() * Math.PI * 2);
-    p.set(t.x, 0, -t.y);
+    p.set(t.x, heightAt(t.x, t.y) - 0.3, -t.y);
     s.set(t.s, t.s * (0.9 + rand() * 0.4), t.s);
     m.compose(p, q, s);
     trunks.setMatrixAt(i, m);
@@ -240,6 +252,43 @@ export function buildGround(data, proj, records) {
     im.receiveShadow = true;
     group.add(im);
   }
+
+  // Wooded hills around the campus: a dense, cheaper canopy (no trunks, no shadow casting).
+  const cbb = bounds(campusRings.flat());
+  const cx = (cbb.minX + cbb.maxX) / 2, cy = (cbb.minY + cbb.maxY) / 2;
+  const fr = rng(21);
+  const forest = [];
+  for (let i = 0; i < 60000 && forest.length < 10000; i++) {
+    const x = cx + (fr() * 2 - 1) * 1600, y = cy + (fr() * 2 - 1) * 1600;
+    if (Math.hypot(x - cx, y - cy) > 1600) continue;
+    const f = forestMask(heightAt(x, y), slopeAt(x, y));
+    if (fr() > f * 0.9 || onRoad(x, y) || inside(x, y, buildingBoxes, 4)) continue;
+    forest.push({ x, y, s: 0.9 + fr() * 0.7 });
+  }
+  const lobe = (r, x, y, z) => {
+    const g = new THREE.IcosahedronGeometry(r, 1);
+    g.deleteAttribute('uv');
+    g.deleteAttribute('normal');
+    g.translate(x, y, z);
+    return mergeVertices(g);
+  };
+  const forestGeom = lobe(2.8, 0, 4.8, 0);
+  forestGeom.computeVertexNormals();
+  const fp = forestGeom.attributes.position, fuv = new Float32Array(fp.count * 2);
+  for (let i = 0; i < fp.count; i++) { fuv[i * 2] = fp.getX(i) + fp.getZ(i) * 0.7; fuv[i * 2 + 1] = fp.getY(i); }
+  forestGeom.setAttribute('uv', new THREE.BufferAttribute(fuv, 2));
+  const forestMesh = new THREE.InstancedMesh(forestGeom, crowns.material, forest.length);
+  forest.forEach((t, i) => {
+    q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, fr() * Math.PI * 2);
+    p.set(t.x, heightAt(t.x, t.y) - 1.2, -t.y);
+    s.set(t.s, t.s * (0.85 + fr() * 0.5), t.s);
+    m.compose(p, q, s);
+    forestMesh.setMatrixAt(i, m);
+    c.setHSL(0.24 + fr() * 0.07, 0.38 + fr() * 0.18, 0.2 + fr() * 0.1);
+    forestMesh.setColorAt(i, c);
+  });
+  forestMesh.receiveShadow = true;
+  group.add(forestMesh);
 
   // Street lamps along campus roads (lit at night).
   const lamps = [];
@@ -266,7 +315,7 @@ export function buildGround(data, proj, records) {
   const poles = new THREE.InstancedMesh(poleGeom, new THREE.MeshStandardMaterial({ color: '#34373c', roughness: 0.6 }), lamps.length);
   const heads = new THREE.InstancedMesh(headGeom, lampMat, lamps.length);
   lamps.forEach((l, i) => {
-    m.makeTranslation(l.x, 0, -l.y);
+    m.makeTranslation(l.x, heightAt(l.x, l.y) - 0.2, -l.y);
     poles.setMatrixAt(i, m);
     heads.setMatrixAt(i, m);
   });
@@ -287,7 +336,7 @@ export function buildGround(data, proj, records) {
   const poolMat = new THREE.MeshBasicMaterial({ map: glowTex, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending });
   const pools = new THREE.InstancedMesh(new THREE.PlaneGeometry(16, 16).rotateX(-Math.PI / 2), poolMat, lamps.length);
   lamps.forEach((l, i) => {
-    m.makeTranslation(l.x, 0.5, -l.y);
+    m.makeTranslation(l.x, heightAt(l.x, l.y) + 0.6, -l.y);
     pools.setMatrixAt(i, m);
   });
   pools.renderOrder = 1;
@@ -302,7 +351,7 @@ export function buildGround(data, proj, records) {
   return {
     group,
     campusBounds: cb,
-    stats: { trees: trees.length, lamps: lamps.length, roads: roads.length },
+    stats: { trees: trees.length, forest: forest.length, lamps: lamps.length, roads: roads.length },
     setNightLevel(t) {
       lampMat.emissiveIntensity = t * 4;
       poolMat.opacity = t * 0.55;

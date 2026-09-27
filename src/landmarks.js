@@ -9,7 +9,7 @@ import { meterUV } from './uv.js';
 function frame(rec, group) {
   const { center, d } = rec.obb;
   const g = new THREE.Group();
-  g.position.set(center.x, 0, -center.y);
+  g.position.set(center.x, rec.base ?? 0, -center.y);
   g.rotation.y = Math.atan2(d.x, -d.y);
   group.add(g);
   return g;
