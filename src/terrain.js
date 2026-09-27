@@ -5,10 +5,10 @@ import * as THREE from 'three';
 //   inner: fine grid around the campus, outer: coarse grid for the distant mountains.
 
 export async function loadTerrain() {
-  const meta = await fetch('assets/terrain/terrain.json').then((r) => r.json());
+  const meta = await fetch('assets/terrain/terrain.json', { cache: 'no-cache' }).then((r) => r.json());
   const grids = {};
   await Promise.all(Object.entries(meta.grids).map(async ([name, g]) => {
-    const buf = await fetch(`assets/terrain/${g.file}`).then((r) => r.arrayBuffer());
+    const buf = await fetch(`assets/terrain/${g.file}`, { cache: 'no-cache' }).then((r) => r.arrayBuffer());
     grids[name] = { ...g, data: new Int16Array(buf) };
   }));
 

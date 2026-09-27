@@ -6,14 +6,6 @@
   <title>계명대 성서캠퍼스 3D</title>
   <link rel="icon" href="data:," />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
-      }
-    }
-  </script>
   <style>
     :root {
       --panel: rgba(255, 255, 255, 0.86);
@@ -205,6 +197,29 @@
   <div id="attribution">지도 데이터 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · 층수는 추정값</div>
   <div id="loading">캠퍼스를 불러오는 중…</div>
 
-  <script type="module" src="src/main.js"></script>
+  <script>
+    // The CDN in front of the site lets browsers cache .js for hours, so after a deploy the old
+    // modules could run against new data. Load our own modules with a per-visit version instead
+    // (they are small); three.js stays on its pinned, immutable CDN URL.
+    (() => {
+      const v = Date.now().toString(36);
+      const imports = {
+        three: 'https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js',
+        'three/addons/': 'https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/',
+      };
+      for (const m of ['geo', 'uv', 'terrain', 'landmarks', 'buildings', 'ground', 'labels', 'ui']) {
+        const url = new URL(`src/${m}.js`, document.baseURI).href;
+        imports[url] = `${url}?v=${v}`; // import map values must be URLs, not bare paths
+      }
+      const map = document.createElement('script');
+      map.type = 'importmap';
+      map.textContent = JSON.stringify({ imports });
+      document.body.append(map);
+      const main = document.createElement('script');
+      main.type = 'module';
+      main.src = `src/main.js?v=${v}`;
+      document.body.append(main);
+    })();
+  </script>
 </body>
 </html>
