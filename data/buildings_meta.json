@@ -613,6 +613,150 @@
     "rooftop_structure"
    ],
    "desc": "기숙사. OSM에는 아파트로 등록되어 있어 캠퍼스 건물로 바꿔 표시합니다."
+  },
+  "명교생활관 믿음동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#7a503b",
+   "roof": "flat",
+   "roofHex": "#616766",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "기숙사(명교생활관)."
+  },
+  "명교생활관 소망동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#7a503b",
+   "roof": "flat",
+   "roofHex": "#616766",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "기숙사(명교생활관)."
+  },
+  "명교생활관 봉사동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#7a503b",
+   "roof": "flat",
+   "roofHex": "#616766",
+   "extras": [
+    "rooftop_structure"
+   ],
+   "desc": "기숙사(명교생활관).",
+   "major": true
+  },
+  "명교생활관 사랑동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#825142",
+   "roof": "hip",
+   "roofHex": "#8f544d",
+   "extras": [],
+   "desc": "기숙사(명교생활관)."
+  },
+  "명교생활관 정의동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#825142",
+   "roof": "hip",
+   "roofHex": "#8f544d",
+   "extras": [],
+   "desc": "기숙사(명교생활관)."
+  },
+  "명교생활관 진리동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#825142",
+   "roof": "hip",
+   "roofHex": "#8f544d",
+   "extras": [],
+   "desc": "기숙사(명교생활관)."
+  },
+  "명교생활관 관리동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#825142",
+   "roof": "hip",
+   "roofHex": "#8f544d",
+   "extras": [],
+   "desc": "명교생활관 부속 건물."
+  },
+  "명교생활관 식당동": {
+   "category": "학생·복지",
+   "wall": "brick",
+   "wallHex": "#825142",
+   "roof": "hip",
+   "roofHex": "#8f544d",
+   "extras": [],
+   "desc": "명교생활관 부속 건물."
+  },
+  "한학촌 서운정": {
+   "category": "기타",
+   "detail": "hanok",
+   "wall": "stucco",
+   "wallHex": "#cdbaa0",
+   "roofHex": "#49484c",
+   "extras": [
+    "hanok_roof"
+   ],
+   "roof": "hip",
+   "desc": "한학촌의 정자."
+  },
+  "한학촌 주일문": {
+   "category": "기타",
+   "detail": "hanok",
+   "wall": "stucco",
+   "wallHex": "#cdbaa0",
+   "roofHex": "#49484c",
+   "extras": [
+    "hanok_roof"
+   ],
+   "roof": "hip",
+   "desc": "한학촌 문."
+  },
+  "한학촌 학이문": {
+   "category": "기타",
+   "detail": "hanok",
+   "wall": "stucco",
+   "wallHex": "#cdbaa0",
+   "roofHex": "#49484c",
+   "extras": [
+    "hanok_roof"
+   ],
+   "roof": "hip",
+   "desc": "한학촌 문."
+  },
+  "한학촌 야외화장실": {
+   "category": "기타",
+   "detail": "hanok",
+   "wall": "stucco",
+   "wallHex": "#cdbaa0",
+   "roofHex": "#49484c",
+   "extras": [
+    "hanok_roof"
+   ],
+   "roof": "hip"
+  },
+  "정문": {
+   "category": "기타",
+   "wall": "stone",
+   "roof": "flat",
+   "extras": [],
+   "desc": "정문. 흰 석조 열주 게이트(안내도 기준)."
+  },
+  "공학4호관": {
+   "category": "강의·연구",
+   "desc": "공과대학 강의·연구동.",
+   "wall": "brick",
+   "wallHex": "#764c4d",
+   "roof": "flat",
+   "roofHex": "#d6c7d4",
+   "extras": [
+    "rooftop_structure"
+   ]
   }
  }
 }

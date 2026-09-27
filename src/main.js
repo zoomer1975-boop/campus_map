@@ -235,7 +235,7 @@ const ui = initUI({
 });
 
 for (const e of entries.values()) {
-  if (e.campus && e.name) labels.add(e, (entry) => select(entry, { fly: true }));
+  if (e.listed) labels.add(e, (entry) => select(entry, { fly: true }));
 }
 
 // ---------- picking ----------

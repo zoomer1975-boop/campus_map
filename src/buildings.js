@@ -520,6 +520,8 @@ export function buildBuildings(data, meta, proj, heightAt = () => 0) {
     e.footprint = wsum;
     e.category = e.meta?.category ?? (e.campus ? '기타' : null);
     e.label = e.meta?.displayName ?? e.name; // official name shown in the UI
+    // List and name tags skip tiny unnamed-in-meta structures (guard houses, toilets, sheds).
+    e.listed = e.campus && !!e.name && (!!e.meta || e.footprint >= 80);
   }
   return { group, records, entries };
 }

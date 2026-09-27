@@ -10,7 +10,7 @@ export function initUI({ entries, categories, onPick, onClose, onNight, onLabels
   const list = $('#building-list');
   const search = $('#search');
   const info = $('#info');
-  const listed = [...entries.values()].filter((e) => e.campus && e.name);
+  const listed = [...entries.values()].filter((e) => e.listed);
   const order = new Map(categories.map((c, i) => [c, i]));
 
   function renderList() {
