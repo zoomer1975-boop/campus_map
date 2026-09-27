@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>계명대 성서캠퍼스 3D</title>
+  <link rel="icon" href="data:," />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+      }
+    }
+  </script>
+  <style>
+    :root {
+      --panel: rgba(255, 255, 255, 0.86);
+      --panel-border: rgba(20, 30, 50, 0.1);
+      --text: #1b2230;
+      --muted: #687285;
+      --accent: #1d3b72;
+      --accent-soft: #e6ecf7;
+      --hi: #e08a1e;
+      --shadow: 0 8px 28px rgba(15, 25, 45, 0.16);
+      --radius: 14px;
+    }
+    body.is-night {
+      --panel: rgba(18, 24, 40, 0.84);
+      --panel-border: rgba(255, 255, 255, 0.08);
+      --text: #e8ecf5;
+      --muted: #97a1b8;
+      --accent: #9fb9ff;
+      --accent-soft: rgba(159, 185, 255, 0.14);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #cfdbe6; }
+    body {
+      font-family: Pretendard, -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+    #scene { position: fixed; inset: 0; }
+    #scene canvas { display: block; }
+    .label-layer { position: absolute; inset: 0; pointer-events: none; }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--panel-border);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(14px) saturate(1.3);
+      -webkit-backdrop-filter: blur(14px) saturate(1.3);
+      transition: background 0.6s, color 0.6s;
+    }
+    button { font: inherit; color: inherit; }
+
+    /* Sidebar */
+    #sidebar {
+      position: fixed; top: 16px; left: 16px; bottom: 16px; width: 280px;
+      display: flex; flex-direction: column; overflow: hidden; z-index: 5;
+    }
+    .brand { padding: 18px 18px 12px; }
+    .brand h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: -0.02em; }
+    .brand p { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); }
+    .search-wrap { padding: 0 14px 10px; }
+    #search {
+      width: 100%; padding: 10px 12px; border-radius: 10px; font: inherit; font-size: 14px;
+      border: 1px solid var(--panel-border); background: rgba(127, 127, 127, 0.08); color: var(--text); outline: none;
+    }
+    #search:focus { border-color: var(--accent); background: transparent; }
+    #count { padding: 0 18px 6px; font-size: 11.5px; color: var(--muted); }
+    #building-list { list-style: none; margin: 0; padding: 0 8px 14px; overflow-y: auto; flex: 1; }
+    #building-list .group h3 {
+      margin: 12px 10px 4px; font-size: 11.5px; font-weight: 700; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.04em; display: flex; justify-content: space-between;
+    }
+    #building-list ul { list-style: none; margin: 0; padding: 0; }
+    #building-list li button {
+      width: 100%; text-align: left; border: 0; background: none; cursor: pointer;
+      padding: 7px 10px; border-radius: 8px; font-size: 14px;
+    }
+    #building-list li button:hover { background: var(--accent-soft); }
+    #building-list li button.active { background: var(--accent); color: #fff; }
+    body.is-night #building-list li button.active { color: #0d1426; }
+    #building-list .empty { padding: 16px 10px; color: var(--muted); font-size: 13px; }
+
+    /* Toolbar */
+    #toolbar { position: fixed; top: 16px; right: 16px; display: flex; gap: 8px; z-index: 6; }
+    #toolbar button, #toggle-sidebar {
+      display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 14px;
+      border: 1px solid var(--panel-border); border-radius: 12px; cursor: pointer; font-size: 13.5px; font-weight: 600;
+      background: var(--panel); box-shadow: var(--shadow);
+      backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+    }
+    #toolbar button[aria-pressed="true"] { background: var(--accent); color: #fff; border-color: transparent; }
+    body.is-night #toolbar button[aria-pressed="true"] { color: #0d1426; }
+    #toolbar .ico { font-size: 15px; line-height: 1; }
+    #toggle-sidebar { display: none; position: fixed; top: 12px; left: 12px; z-index: 7; }
+
+    /* Info panel */
+    #info-wrap { position: fixed; right: 16px; top: 72px; width: 320px; z-index: 5; }
+    #info-wrap[hidden] { display: none; }
+    #info { padding: 18px 20px 16px; }
+    #info-close {
+      position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border-radius: 8px;
+      border: 0; background: none; cursor: pointer; font-size: 18px; color: var(--muted);
+    }
+    #info-close:hover { background: var(--accent-soft); }
+    .chip {
+      display: inline-block; font-size: 11.5px; font-weight: 700; padding: 3px 8px; border-radius: 999px;
+      background: var(--accent-soft); color: var(--accent);
+    }
+    #info h2 { margin: 8px 0 0; font-size: 22px; letter-spacing: -0.02em; }
+    #info .en { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+    #info .desc { margin: 12px 0 0; font-size: 14px; line-height: 1.55; }
+    #info .desc.muted { color: var(--muted); font-size: 13px; }
+    #info code { font-size: 12px; }
+    #info dl { margin: 14px 0 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    #info dl div { background: rgba(127, 127, 127, 0.08); border-radius: 10px; padding: 8px 10px; }
+    #info dt { font-size: 11px; color: var(--muted); }
+    #info dd { margin: 2px 0 0; font-size: 15px; font-weight: 700; }
+    #info dd small { display: block; font-size: 10.5px; font-weight: 500; color: var(--muted); }
+    #info .osm { margin: 12px 0 0; font-size: 11.5px; color: var(--muted); word-break: break-all; }
+    #info .osm a { color: inherit; }
+
+    /* Name tags */
+    .label {
+      pointer-events: auto; cursor: pointer; border: 0;
+      font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 7px; white-space: nowrap;
+      background: rgba(255, 255, 255, 0.9); color: #1b2230; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+      transform: translateY(-4px); transition: background 0.2s;
+    }
+    .label::after {
+      content: ''; position: absolute; left: 50%; bottom: -4px; margin-left: -4px;
+      border: 4px solid transparent; border-bottom: 0; border-top-color: rgba(255, 255, 255, 0.9);
+    }
+    .label.major { font-size: 13px; font-weight: 800; background: #1d3b72; color: #fff; }
+    .label.major::after { border-top-color: #1d3b72; }
+    .label.selected { background: var(--hi); color: #fff; z-index: 10; }
+    .label.selected::after { border-top-color: var(--hi); }
+    .label:hover { filter: brightness(1.08); }
+
+    #attribution {
+      position: fixed; right: 12px; bottom: 10px; z-index: 4; font-size: 11px; color: rgba(20, 30, 45, 0.75);
+      background: rgba(255, 255, 255, 0.6); padding: 3px 8px; border-radius: 6px;
+    }
+    body.is-night #attribution { color: rgba(230, 236, 245, 0.8); background: rgba(10, 15, 30, 0.5); }
+    #attribution a { color: inherit; }
+    #hint { position: fixed; left: 312px; bottom: 12px; z-index: 4; font-size: 12px; color: var(--muted); padding: 6px 10px; }
+
+    #loading {
+      position: fixed; inset: 0; z-index: 20; display: grid; place-items: center;
+      background: #dfe8f0; font-size: 15px; color: #445;
+    }
+
+    @media (max-width: 760px) {
+      #toggle-sidebar { display: inline-flex; }
+      #sidebar {
+        top: 0; left: 0; bottom: 0; width: min(86vw, 320px); border-radius: 0 var(--radius) var(--radius) 0;
+        transform: translateX(-105%); transition: transform 0.25s ease;
+      }
+      body.sidebar-open #sidebar { transform: none; }
+      .brand { padding-top: 64px; }
+      #toolbar { top: 12px; right: 12px; gap: 6px; }
+      #toolbar button { padding: 0 10px; }
+      #toolbar .txt { display: none; }
+      #info-wrap { left: 12px; right: 12px; top: auto; bottom: 34px; width: auto; }
+      #info { max-height: 46vh; overflow-y: auto; }
+      #hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div id="scene"></div>
+
+  <button id="toggle-sidebar" type="button" aria-label="건물 목록">☰ 건물</button>
+  <aside id="sidebar" class="panel">
+    <div class="brand">
+      <h1>계명대학교 성서캠퍼스</h1>
+      <p>대구 달서구 · OpenStreetMap 기반 3D 모델</p>
+    </div>
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="건물 검색 (예: 쉐턱관)" autocomplete="off" />
+    </div>
+    <div id="count"></div>
+    <ul id="building-list"></ul>
+  </aside>
+
+  <div id="toolbar">
+    <button id="btn-night" type="button" aria-pressed="false" title="낮/밤 전환"><span class="ico">☀</span><span class="txt">낮</span></button>
+    <button id="btn-labels" type="button" aria-pressed="true" title="이름표 표시"><span class="ico">🏷</span><span class="txt">이름표</span></button>
+    <button id="btn-reset" type="button" title="전체 보기"><span class="ico">⌂</span><span class="txt">전체 보기</span></button>
+  </div>
+
+  <div id="info-wrap" hidden>
+    <div class="panel" style="position:relative">
+      <button id="info-close" type="button" aria-label="닫기">×</button>
+      <div id="info"></div>
+    </div>
+  </div>
+
+  <div id="hint">드래그: 이동 · 우클릭 드래그: 회전 · 휠: 확대/축소 · 건물 클릭: 정보</div>
+  <div id="attribution">지도 데이터 © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors · 층수는 추정값</div>
+  <div id="loading">캠퍼스를 불러오는 중…</div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
